@@ -1,0 +1,9 @@
+{# file.jinja2: This is the wrapper template that outputs the entire file #}
+from __future__ import annotations
+from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Optional
+
+{%- for model in models %}
+{{ model.render() }}
+
+{%- endfor %}

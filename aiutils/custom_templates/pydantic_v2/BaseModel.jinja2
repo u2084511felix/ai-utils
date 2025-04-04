@@ -1,0 +1,21 @@
+{# pydantic_v2/BaseModel.jinja2 - template for a single model class #}
+class {{ class_name }}(BaseModel):
+    {%- for field in fields %}
+    {%- set fixed_type = field.type_hint %}
+    {%- if fixed_type.startswith("List[Dict[") %}
+        {%- set fixed_type = "List[List[List[str]]]" %}
+    {%- elif fixed_type.startswith("Dict[") %}
+        {%- set fixed_type = "List[List[str]]" %}
+    {%- endif %}
+    {{ field.name }}: {{ fixed_type }}{% if field.default is not none %} = {{ field.default }}{% endif %}
+    {%- endfor %}
+
+    class Config:
+        extra = 'forbid'
+
+    {%- if recursive %}
+    @classmethod
+    def model_rebuild(cls) -> None:
+        super().model_rebuild()
+    {%- endif %}
+
