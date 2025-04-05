@@ -265,7 +265,11 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
     else:
         module = create_generator_module(**params)
 
-    structured_output = await module.structured_output(system_msg, transforn_prompt, schema=schema, input_type=input_type, module_name=module_name)
+    try:
+        structured_output = await module.structured_output(system_msg, transforn_prompt, schema=schema, input_type=input_type, module_name=module_name)
+
+    except Exception as e:
+        return e
 
     output_json = json.loads(structured_output)
     save_json_file(output_json, "latest_structured_outout.json")
