@@ -2,7 +2,7 @@ import re
 import ast
 from typing import Any, Set, Dict, Tuple, List, Optional, Union, Type
 from pydantic import BaseModel, create_model, Field
-from app.models.openai_config import Generate, TextModels, create_generator_module
+from aiutils.openai_config import Generate, TextModels, create_generator_module
 import json
 import os
 import inspect
