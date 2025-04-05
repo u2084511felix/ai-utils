@@ -10,7 +10,6 @@ import importlib
 from importlib import reload
 
 
-
 class GPT_Module_Params(BaseModel):
     messages: list
     max_tokens: int
@@ -164,7 +163,7 @@ class Generate(GPTModule):
             response = await ChatBody(self.request_body, input_type)
 
         elif (input_type == 'pydantic'):
-            if (module_name is not ''):
+            if (module_name != ''):
                 module = importlib.import_module(module_name)
                 module = reload(module)
                 schema_title = schema
@@ -172,7 +171,7 @@ class Generate(GPTModule):
                 self.response_format = model_class
 
             else:
-                self.response_format=schema
+                self.response_format = schema
 
             self.request_body = make_req_body(self)
             response = await ChatBody(self.request_body, input_type)
