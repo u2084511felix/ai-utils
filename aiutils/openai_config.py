@@ -164,14 +164,16 @@ class Generate(GPTModule):
             response = await ChatBody(self.request_body, input_type)
 
         elif (input_type == 'pydantic'):
-            module = importlib.import_module(module_name)
-            module = reload(module)
+            if (module_name is not ''):
+                module = importlib.import_module(module_name)
+                module = reload(module)
+                schema_title = schema
+                model_class = getattr(module, schema_title)
+                self.response_format = model_class
 
-            schema_title = schema
-            model_class = getattr(module, schema_title)
-            print('model class: ', model_class)
-            
-            self.response_format = model_class
+            else:
+                self.response_format=schema
+
             self.request_body = make_req_body(self)
             response = await ChatBody(self.request_body, input_type)
 
