@@ -30,8 +30,9 @@ def get_caller_script_dir():
 
 def save_json_file(data, file_name):
     """Saves JSON in the same directory as the script that originally called modules.py."""
-    caller_dir = get_caller_script_dir()
+    caller_dir = get_caller_script_dir() + "/tmp/"
     os.makedirs(caller_dir, exist_ok=True)
+
     file_path = os.path.join(caller_dir, file_name)
 
     with open(file_path, "w") as f:
