@@ -273,7 +273,7 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
 
     output_json = json.loads(structured_output)
     save_json_file(output_json, "latest_structured_outout.json")
-    return structured_output
+    return output_json
 
 
 def pydantic_model_generator(json_input, output_file, template_dir):
