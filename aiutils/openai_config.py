@@ -73,6 +73,18 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
+
+
+    async def web_search(self, query: str) -> str:
+        self.model = TextModels.hipster_mini
+        self.tools =[{"type": "web_search_preview"}],
+
+        try:
+            search_result = await ResponsesCall(model=self.model, tools=self.tools, input=query)
+        except Exception as e:
+
+
+
     async def generate(self, system_message, prompt, model=TextModels.latest, temperature=0, chat=True):
         self.model = model
         self.temperature = temperature
@@ -177,7 +189,7 @@ async def Chat(params: GPT_Module_Params):
         response = client.chat.completions.create(**params)
         response_message = response.choices[0].message
         if response_message.tool_calls:
-            print("\n\nfunction call detected.\n\n")
+        print("\n\nfunction call detected.\n\n")
             return (response_message.tool_calls)
 
         else:
@@ -186,6 +198,16 @@ async def Chat(params: GPT_Module_Params):
 
     except Exception as e:
         print(e)
+
+
+
+async def ResponsesCall(**kwargs):
+    try:
+        response = client.responses.call(**kwargs)
+        return response.output_text
+    except Exception as e:
+        return f"Responses API error: {e}"
+
 
 
 def send_functioncall_args_to_available_functions(response, available_functions):
@@ -221,3 +243,7 @@ def send_functioncall_args_to_available_functions(response, available_functions)
 
     except Exception as e:
         print(f"\nException: {e}\n")
+
+
+
+
