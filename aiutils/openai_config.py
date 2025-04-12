@@ -3,10 +3,39 @@ import json
 from pydantic import BaseModel
 from dataclasses import dataclass, field
 import pprint
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
+from enum import Enum
 from aiutils import client, encoding, TextModels, EmbeddingModels, Models
 import importlib
 from importlib import reload
+
+
+def clean_pydantic_model(model):
+    model_dict = model.dict()
+    clean_dict = {k: v for k, v in model_dict.items() if v is not None}
+    return clean_dict
+
+
+class UserLocation(BaseModel):
+    type: str = field(default_factory="approximate")
+    country: str
+    city: str
+    region: str
+    timzeone: Optional[str] = None
+
+
+"""
+NOTE: 
+    search_context_size: "low", "medium", "high"
+"""
+
+
+class WebSearchResponsesModel(BaseModel):
+    model: str
+    tools: List
+    search_context_size: Optional[str] = None
+    user_location: Optional[UserLocation] = None
+    input: str
 
 
 class GPT_Module_Params(BaseModel):
@@ -73,12 +102,21 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
-    async def web_search(self, query: str) -> str:
-        self.model = TextModels.hipster_mini
-        self.tools = [{"type": "web_search_preview"}],
+    async def web_search(self, query: str, params=None) -> str:
 
+        web_search_model = WebSearchResponsesModel(
+            model=TextModels.hipster_mini,
+            tools=[{"type": "web_search_preview"}],
+            input=query
+        )
+        if params != None:
+            web_search_model(**params)
+
+        clean_model = clean_pydantic_model(web_search_model)
         try:
-            search_result = await ResponsesCall(model=self.model, tools=self.tools, input=query)
+            response = await ResponsesCall(**clean_model)
+            return response
+
         except Exception as e:
             return e
 
@@ -199,10 +237,11 @@ async def Chat(params: GPT_Module_Params):
 
 async def ResponsesCall(**kwargs):
     try:
-        response = client.responses.call(**kwargs)
+
+        response = client.responses.create(**kwargs)
         return response.output_text
     except Exception as e:
-        return f"Responses API error: {e}"
+        return e
 
 
 def send_functioncall_args_to_available_functions(response, available_functions):
