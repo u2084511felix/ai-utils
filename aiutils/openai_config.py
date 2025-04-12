@@ -186,8 +186,8 @@ async def Chat(params: GPT_Module_Params):
         response = client.chat.completions.create(**params)
         response_message = response.choices[0].message
         if response_message.tool_calls:
-        print("\n\nfunction call detected.\n\n")
-        return (response_message.tool_calls)
+            print("\n\nfunction call detected.\n\n")
+            return (response_message.tool_calls)
 
         else:
             response_text = response.choices[0].message.content
