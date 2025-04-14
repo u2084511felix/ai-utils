@@ -24,6 +24,15 @@ class TextModels:
     hipster_latest = "gpt-4o-2024-08-06"
     hipster_mini = "gpt-4o-mini"
 
+    GPT_3_5_TURBO = "gpt-3.5-turbo"
+    GPT_4_5_PREVIEW = "gpt-4.5-preview"
+    O1 = "o1"
+    O1_PREVIEW = "o1-preview"
+    O1_MINI = "o1-mini"
+    O3_MINI = "o3-mini"
+
+
+
 
 class EmbeddingModels:
     large = "text-embedding-3-large"
