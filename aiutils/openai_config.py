@@ -106,7 +106,7 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
-    async def web_search(self, **kwargs) -> str:
+    async def web_search(self,tool_dict=None, **kwargs) -> str:
         """
         kwargs:
             model: str = f"{TextModels.hipster_mini}"
@@ -122,12 +122,23 @@ class Generate(GPTModule):
         """
 
         web_search_model = WebSearchResponsesModel(**kwargs)
-        tools_list = web_search_model["tools"][0]
-        clean_tools = {k: v for k, v in tools_list.items() if v is not None}
-        web_search_model["tools"] = []
-        web_search_model["tools"].append(clean_tools)
-
         clean_model = clean_pydantic_model(web_search_model)
+
+        if tool_dict is not None:
+            new_tools = SearchTools()
+            tool_dump = new_tools.model_dump()
+            new_dict = {}
+            for k, v in tool_dump.items():
+                if v is None:
+                    continue
+                else:
+                    if k in tool_dict.keys():
+                        new_dict[k] = tool_dict[k]
+
+            
+            clean_model["tools"] = []
+            clean_model["tools"].append(tool_dump)
+
 
         try:
             response = await ResponsesCall(**clean_model)
