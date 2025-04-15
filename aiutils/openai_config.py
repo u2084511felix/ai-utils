@@ -30,11 +30,16 @@ NOTE:
 """
 
 
-class WebSearchResponsesModel(BaseModel):
-    model: str = f"{TextModels.hipster_mini}"
-    tools: List = [{"type": "web_search_preview"}]
+class SearchTools(BaseModel):
+    type: str = "web_search_preview"
     search_context_size: Optional[str] = None
     user_location: Optional[UserLocation] = None
+
+
+
+class WebSearchResponsesModel(BaseModel):
+    model: str = f"{TextModels.hipster_mini}"
+    tools: List = [SearchTools]
     input: str = None
 
 class GPT_Module_Params(BaseModel):
@@ -105,9 +110,11 @@ class Generate(GPTModule):
         """
         kwargs:
             model: str = f"{TextModels.hipster_mini}"
-            tools: List = [{"type": "web_search_preview"}]
-            search_context_size: Optional[str] = None
-            user_location: Optional[UserLocation] = None
+            tools: List = 
+                type: "web_search_preview"
+                search_context_size: Optional[str] = None
+                user_location: Optional[UserLocation] = None
+
             input: str = None
 
         NOTE: search_context_size: "low", "medium", "high"
@@ -115,7 +122,13 @@ class Generate(GPTModule):
         """
 
         web_search_model = WebSearchResponsesModel(**kwargs)
+        tools_list = web_search_model["tools"][0]
+        clean_tools = {k: v for k, v in tools_list.items() if v is not None}
+        web_search_model["tools"] = []
+        web_search_model["tools"].append(clean_tools)
+
         clean_model = clean_pydantic_model(web_search_model)
+
         try:
             response = await ResponsesCall(**clean_model)
             return response
