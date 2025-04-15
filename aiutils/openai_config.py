@@ -31,12 +31,11 @@ NOTE:
 
 
 class WebSearchResponsesModel(BaseModel):
-    model: str
-    tools: List
+    model: str = f"{TextModels.hipster_mini}"
+    tools: List = [{"type": "web_search_preview"}]
     search_context_size: Optional[str] = None
     user_location: Optional[UserLocation] = None
-    input: str
-
+    input: str = None
 
 class GPT_Module_Params(BaseModel):
     messages: list
@@ -102,16 +101,20 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
-    async def web_search(self, query: str, params=None) -> str:
+    async def web_search(self, **kwargs) -> str:
+        """
+        kwargs:
+            model: str = f"{TextModels.hipster_mini}"
+            tools: List = [{"type": "web_search_preview"}]
+            search_context_size: Optional[str] = None
+            user_location: Optional[UserLocation] = None
+            input: str = None
 
-        web_search_model = WebSearchResponsesModel(
-            model=TextModels.hipster_mini,
-            tools=[{"type": "web_search_preview"}],
-            input=query
-        )
-        if params != None:
-            web_search_model(**params)
+        NOTE: search_context_size: "low", "medium", "high"
 
+        """
+
+        web_search_model = WebSearchResponsesModel(**kwargs)
         clean_model = clean_pydantic_model(web_search_model)
         try:
             response = await ResponsesCall(**clean_model)
