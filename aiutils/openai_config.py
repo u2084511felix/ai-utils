@@ -182,8 +182,8 @@ class Generate(GPTModule):
     def call_function(self, function_response, available_functions):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
-    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name=''):
-        self.model = TextModels.hipster_latest
+    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.hipster_latest):
+        self.model = model
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 

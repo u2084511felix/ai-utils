@@ -11,6 +11,10 @@ encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
 
 class TextModels:
 
+    smarter = "gpt-4.1"
+
+    o4mini = "o4-mini"
+
     latest = "gpt-4o"
     latest_mini = "gpt-4o-mini"
     previous = "gpt-4-turbo-preview"
@@ -26,14 +30,15 @@ class TextModels:
     hipster_latest = "gpt-4o-2024-08-06"
     hipster_mini = "gpt-4o-mini"
 
-    GPT_3_5_TURBO = "gpt-3.5-turbo"
-    GPT_4_5_PREVIEW = "gpt-4.5-preview"
-    O1 = "o1"
-    O1_PREVIEW = "o1-preview"
-    O1_MINI = "o1-mini"
-    O3_MINI = "o3-mini"
+    turbo35 = "gpt-3.5-turbo"
+    preview45 = "gpt-4.5-preview"
+    o1 = "o1"
+    o1prevew = "o1-preview"
+    o1mini = "o1-mini"
+    o3mini = "o3-mini"
+    o3 = "o3"
 
-
+    nano41 = "gpt-4.1-nano"
 
 
 class EmbeddingModels:
