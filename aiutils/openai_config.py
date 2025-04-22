@@ -184,7 +184,7 @@ class Generate(GPTModule):
 
     async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.hipster_latest):
         self.model = model
-        if model == "o3"
+        if model == "o3":
             self.temperature = 1
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
