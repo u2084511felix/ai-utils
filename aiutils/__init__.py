@@ -24,7 +24,7 @@ class TextModels:
     og = "gpt-4-0314"
 
     alpha = "gpt-4o-64k-output-alpha"
-    
+
     turbo4 = "gpt-4-turbo"
     hipster = "gpt-4o"
     hipster_latest = "gpt-4o-2024-08-06"
