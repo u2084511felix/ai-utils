@@ -21,11 +21,20 @@ def truncate_to_token_limit(text, model):
     return truncated_text
 
 
-async def get_embedding(text, model=EmbeddingModels.large, dimensions=3072, encoding_format="float"):
+async def get_embedding(text, model='large', dimensions=3072, encoding_format="float"):
 
     truncated_text = truncate_to_token_limit(text, model)
 
-    if model == EmbeddingModels.small:
+    if model == 'small':
+        model = EmbeddingModels.small
+        if dimensions > 1536:
+            dimensions = 1536
+
+    if model == 'large':
+        model = EmbeddingModels.large
+
+    if model == 'legacy':
+        model = EmbeddingModels.legacy
         if dimensions > 1536:
             dimensions = 1536
 
