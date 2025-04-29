@@ -23,8 +23,6 @@ def truncate_to_token_limit(text, model):
 
 async def get_embedding(text, model='small', dimensions=3072, encoding_format="float"):
 
-    truncated_text = truncate_to_token_limit(text, model)
-
     if model == 'small':
         model = EmbeddingModels.small
         if dimensions > 1536:
@@ -37,6 +35,8 @@ async def get_embedding(text, model='small', dimensions=3072, encoding_format="f
         model = EmbeddingModels.legacy
         if dimensions > 1536:
             dimensions = 1536
+
+    truncated_text = truncate_to_token_limit(text, model)
 
     response = client.embeddings.create(
         input=truncated_text,
