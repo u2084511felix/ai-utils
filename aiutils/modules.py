@@ -252,7 +252,7 @@ async def generate_structured_output_schema(json_object, system_msg="default"):
     return generated_schema
 
 
-async def structured_outputs_generator(transforn_prompt, schema, system_msg="default", input_type='json', module_name='', params={}):
+async def structured_outputs_generator(transforn_prompt, schema, system_msg="default", input_type='json', module_name='', params={}, model=''):
 
     if (system_msg == "default"):
         sys_msg = f"""Generate a JSON schema for the given content model."""
@@ -261,13 +261,16 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
 
     if (params is {}):
         module = create_generator_module(
-            max_tokens=50000, system_message=sys_msg)
+            max_tokens=30000, system_message=sys_msg)
 
     else:
         module = create_generator_module(**params)
 
     try:
-        structured_output = await module.structured_output(system_msg, transforn_prompt, schema=schema, input_type=input_type, module_name=module_name)
+        if model != '':
+            structured_output = await module.structured_output(system_msg, transforn_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
+        else:
+            structured_output = await module.structured_output(system_msg, transforn_prompt, schema=schema, input_type=input_type, module_name=module_name)
 
     except Exception as e:
         return e

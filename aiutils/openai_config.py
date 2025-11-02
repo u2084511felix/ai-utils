@@ -30,13 +30,17 @@ NOTE:
 """
 
 
-class WebSearchResponsesModel(BaseModel):
-    model: str
-    tools: List
+class SearchTools(BaseModel):
+    type: str = "web_search_preview"
     search_context_size: Optional[str] = None
     user_location: Optional[UserLocation] = None
-    input: str
 
+
+
+class WebSearchResponsesModel(BaseModel):
+    model: str = f"{TextModels.hipster_mini}"
+    tools: List = [SearchTools]
+    input: str = None
 
 class GPT_Module_Params(BaseModel):
     messages: list
@@ -102,17 +106,40 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
-    async def web_search(self, query: str, params=None) -> str:
+    async def web_search(self,tool_dict=None, **kwargs) -> str:
+        """
+        kwargs:
+            model: str = f"{TextModels.hipster_mini}"
+            tools: List = 
+                type: "web_search_preview"
+                search_context_size: Optional[str] = None
+                user_location: Optional[UserLocation] = None
 
-        web_search_model = WebSearchResponsesModel(
-            model=TextModels.hipster_mini,
-            tools=[{"type": "web_search_preview"}],
-            input=query
-        )
-        if params != None:
-            web_search_model(**params)
+            input: str = None
 
+        NOTE: search_context_size: "low", "medium", "high"
+
+        """
+
+        web_search_model = WebSearchResponsesModel(**kwargs)
         clean_model = clean_pydantic_model(web_search_model)
+
+        if tool_dict is not None:
+            new_tools = SearchTools()
+            tool_dump = new_tools.model_dump()
+            new_dict = {}
+            for k, v in tool_dump.items():
+                if v is None:
+                    continue
+                else:
+                    if k in tool_dict.keys():
+                        new_dict[k] = tool_dict[k]
+
+            
+            clean_model["tools"] = []
+            clean_model["tools"].append(tool_dump)
+
+
         try:
             response = await ResponsesCall(**clean_model)
             return response
@@ -155,8 +182,10 @@ class Generate(GPTModule):
     def call_function(self, function_response, available_functions):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
-    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name=''):
-        self.model = TextModels.hipster_latest
+    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.hipster_latest):
+        self.model = model
+        if model == "o3":
+            self.temperature = 1
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
