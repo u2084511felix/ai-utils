@@ -98,14 +98,14 @@ def make_req_body(module: GPTModule):
 @dataclass
 class Generate(GPTModule):
     def __init__(self):
-        self.model = TextModels.latest
+        self.model = TextModels.gpt_5
         self.messages = []
         self.temperature = 0
 
     async def web_search(self, query: str, params=None) -> str:
 
         web_search_model = WebSearchResponsesModel(
-            model=TextModels.hipster_mini,
+            model=TextModels.gpt_5_mini,
             tools=[{"type": "web_search_preview"}],
             input=query
         )
@@ -120,7 +120,7 @@ class Generate(GPTModule):
         except Exception as e:
             return e
 
-    async def generate(self, system_message, prompt, model=TextModels.latest, temperature=0, chat=True):
+    async def generate(self, system_message, prompt, model=TextModels.gpt_5, temperature=0, chat=True):
         self.model = model
         self.temperature = temperature
         self.messages.append({"role": "system", "content": system_message})
@@ -156,7 +156,7 @@ class Generate(GPTModule):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
     async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name=''):
-        self.model = TextModels.hipster_latest
+        self.model = TextModels.gpt_5_mini
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
