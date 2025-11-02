@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import pprint
 from typing import Optional, List, Dict, Any
 from enum import Enum
-from aiutils import client, encoding, TextModels, EmbeddingModels, Models
+from aiutils import client, encoding, TextModels, EmbeddingModels, Models, reasoning_models
 import importlib
 from importlib import reload
 
@@ -38,7 +38,7 @@ class SearchTools(BaseModel):
 
 
 class WebSearchResponsesModel(BaseModel):
-    model: str = f"{TextModels.hipster_mini}"
+    model: str = f"{TextModels.gpt_4_1_nano}"
     tools: List = [SearchTools]
     input: str = None
 
@@ -102,7 +102,7 @@ def make_req_body(module: GPTModule):
 @dataclass
 class Generate(GPTModule):
     def __init__(self):
-        self.model = TextModels.latest
+        self.model = TextModels.gpt_4_1
         self.messages = []
         self.temperature = 0
 
@@ -147,7 +147,7 @@ class Generate(GPTModule):
         except Exception as e:
             return e
 
-    async def generate(self, system_message, prompt, model=TextModels.latest, temperature=0, chat=True):
+    async def generate(self, system_message, prompt, model=TextModels.gpt_4_1, temperature=0, chat=True):
         self.model = model
         self.temperature = temperature
         self.messages.append({"role": "system", "content": system_message})
@@ -182,9 +182,9 @@ class Generate(GPTModule):
     def call_function(self, function_response, available_functions):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
-    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.hipster_latest):
+    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_4_1):
         self.model = model
-        if model == "o3":
+        if model in reasoning_models:
             self.temperature = 1
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
