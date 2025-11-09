@@ -170,13 +170,17 @@ class Generate(GPTModule):
 
     async def generate(self, system_message, prompt, model=TextModels.gpt_4_1, temperature=0, chat=True):
         if cclient.vendor == "google":
-            self.model = TextModels.gemini_25_pro
+            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite:
+                self.model = model
+            else:
+                self.model = TextModels.gemini_25_flash
         else:
             self.model = model
         self.temperature = temperature
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
         if self.model in reasoning_models:
+            self.temperature = 1
             self.reasoning_effort = "none"
         self.request_body = make_req_body(self)
 
@@ -212,7 +216,10 @@ class Generate(GPTModule):
 
     async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_4_1):
         if cclient.vendor == "google":
-            self.model = TextModels.gemini_25_pro
+            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite:
+                self.model = model
+            else:
+                self.model = TextModels.gemini_25_flash
         else:
             self.model = model
         if self.model in reasoning_models:

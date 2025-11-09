@@ -2,13 +2,14 @@ import re
 import ast
 from typing import Any, Set, Dict, Tuple, List, Optional, Union, Type
 from pydantic import BaseModel, create_model, Field
-from aiutils.openai_config import Generate, TextModels, create_generator_module
+from aiutils.openai_config import Generate, TextModels, cclient, create_generator_module
 import json
 import os
 import inspect
 import sys
 import subprocess
 from datamodel_code_generator import InputFileType, DataModelType, generate
+
 
 
 def run_script_action(action):
@@ -252,7 +253,9 @@ async def generate_structured_output_schema(json_object, system_msg="default"):
     return generated_schema
 
 
-async def structured_outputs_generator(transforn_prompt, schema, system_msg="default", input_type='json', module_name='', params={}, model=''):
+async def structured_outputs_generator(transforn_prompt, schema, system_msg="default", input_type='json', module_name='', params={}, model='', vendor='openai'):
+
+    cclient.set_vendor(vendor)
 
     if (system_msg == "default"):
         sys_msg = f"""Generate a JSON schema for the given content model."""

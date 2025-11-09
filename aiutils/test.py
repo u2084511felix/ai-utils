@@ -1,8 +1,11 @@
 from openai_config import cclient, Generate 
 import asyncio
+from aiutils import TextModels
+from pydantic import BaseModel
+test = Generate()
 
 cclient.set_vendor("google")
-test = Generate()
+from modules import structured_outputs_generator
 
 async def test_ing():
 
@@ -10,8 +13,19 @@ async def test_ing():
 
     print(cclient.vendor)
     system = "You are a helpful assistant."
-    res = await test.generate(system, "write a short haiku about the rule of law over power")
-    print(res)
+
+    class Haiki(BaseModel):
+        line1: str
+        line2: str
+        line3: str
+        line4: str
+        line5: str
+
+    res = await structured_outputs_generator("write a short haiku about the rule of law over power", Haiki, input_type="pydantic", model=TextModels.gemini_25_flash_lite, vendor="google")
+
+    for i in res.keys():
+        print(res[i])
+    #res = await test.generate(system, "write a short haiku about the rule of law over power")
 
 
 asyncio.run(test_ing())
