@@ -13,7 +13,7 @@ from importlib import reload
 class Client:
     def __init__(self):
         self.client = client 
-        self.vendor = "openai"
+        self.vendor = "google"
 
     def set_vendor(self, vendor):
         if vendor == "openai":
