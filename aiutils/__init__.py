@@ -1,5 +1,24 @@
 from openai import OpenAI
 import os
+#from google import genai
+
+google_client  = OpenAI(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
+
+# response = client.models.generate_content(
+#     model="gemini-2.5-flash", contents="Explain how AI works in a few words"
+# )
+# print(response.text)
+
+
+brave_client = OpenAI(
+    api_key=os.getenv("BRAVE_API_KEY"),
+    base_url="https://api.search.brave.com/res/v1",
+)
+
+
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
@@ -9,7 +28,7 @@ encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
 # tokenizer = tiktoken.get_encoding(encoding)
 
 
-reasoning_models = ["o3", "o3-pro", "gpt-5", "gpt-5-mini", "gpt-5-nano", "o1", "o1-preview", "o1-mini", "o3-mini", "o4-mini"]
+reasoning_models = ["gemini_25_pro", "o3", "o3-pro", "gpt-5", "gpt-5-mini", "gpt-5-nano", "o1", "o1-preview", "o1-mini", "o3-mini", "o4-mini"]
 instruct_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-4.5-preview", "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14"]
 
 class TextModels:
@@ -40,7 +59,10 @@ class TextModels:
     gpt_4_1_nano = "gpt-4.1-nano-2025-04-14"
 
 
-
+    #Google models:
+    gemini_25_flash = "gemini-2.5-flash"
+    gemini_25_pro = "gemini-2.5-pro"
+    gemini_25_flash_lite = "gemini-2.5-flash-lite"
 
     # Legacy model names (phaseing out of all projects)
     smarter = "gpt-4.1"

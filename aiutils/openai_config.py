@@ -5,10 +5,28 @@ from dataclasses import dataclass, field
 import pprint
 from typing import Optional, List, Dict, Any
 from enum import Enum
-from aiutils import client, encoding, TextModels, EmbeddingModels, Models, reasoning_models
+from aiutils import client, encoding, TextModels, EmbeddingModels, Models, reasoning_models, brave_client, google_client
 import importlib
 from importlib import reload
 
+
+class Client:
+    def __init__(self):
+        self.client = client 
+        self.vendor = "openai"
+
+    def set_vendor(self, vendor):
+        if vendor == "openai":
+            self.client = client 
+            self.vendor = "openai"
+        elif vendor == "google":
+            self.client = google_client
+            self.vendor = "google"
+        elif vendor == "brave":
+            self.client = brave_client
+            self.vendor = "brave"
+
+cclient = Client()
 
 def clean_pydantic_model(model):
     model_dict = model.dict()
@@ -47,6 +65,7 @@ class GPT_Module_Params(BaseModel):
     max_tokens: int
     temperature: float
     model: str
+    reasoning_effort: str
     frequency_penalty: float
     presence_penalty: float
     stop: str
@@ -67,6 +86,7 @@ class GPT_Module_Params(BaseModel):
 class GPTModule:
     request_body: Optional[Dict[str, any]] = field(default_factory=dict)
     model: Optional[str] = None
+    reasoning_effort: Optional[str] = None
     messages: Optional[list] = field(default_factory=list)
     token_usage: Optional[int] = None
     max_tokens: Optional[int] = None
@@ -106,6 +126,9 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
+
+    #super init that swaps the default cclient.client based on the vendor
+
     async def web_search(self,tool_dict=None, **kwargs) -> str:
         """
         kwargs:
@@ -135,10 +158,8 @@ class Generate(GPTModule):
                     if k in tool_dict.keys():
                         new_dict[k] = tool_dict[k]
 
-            
             clean_model["tools"] = []
             clean_model["tools"].append(tool_dump)
-
 
         try:
             response = await ResponsesCall(**clean_model)
@@ -148,10 +169,15 @@ class Generate(GPTModule):
             return e
 
     async def generate(self, system_message, prompt, model=TextModels.gpt_4_1, temperature=0, chat=True):
-        self.model = model
+        if cclient.vendor == "google":
+            self.model = TextModels.gemini_25_pro
+        else:
+            self.model = model
         self.temperature = temperature
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
+        if self.model in reasoning_models:
+            self.reasoning_effort = "none"
         self.request_body = make_req_body(self)
 
         if (chat):
@@ -174,6 +200,8 @@ class Generate(GPTModule):
         self.model = TextModels.previous
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
+        if self.model in reasoning_models:
+            self.reasoning_effort = "none"
         self.request_body = make_req_body(self)
 
         response = await Chat(self.request_body)
@@ -183,9 +211,13 @@ class Generate(GPTModule):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
     async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_4_1):
-        self.model = model
-        if model in reasoning_models:
+        if cclient.vendor == "google":
+            self.model = TextModels.gemini_25_pro
+        else:
+            self.model = model
+        if self.model in reasoning_models:
             self.temperature = 1
+            self.reasoning_effort = "none"
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
@@ -237,10 +269,10 @@ def create_generator_module(**kwargs):
 async def ChatBody(params, input_type='json'):
     try:
         if (input_type == 'json'):
-            response = client.chat.completions.create(**params)
+            response = cclient.client.chat.completions.create(**params)
 
         elif (input_type == 'pydantic'):
-            response = client.beta.chat.completions.parse(**params)
+            response = cclient.client.beta.chat.completions.parse(**params)
 
         return response
     except Exception as e:
@@ -250,7 +282,7 @@ async def ChatBody(params, input_type='json'):
 async def Chat(params: GPT_Module_Params):
 
     try:
-        response = client.chat.completions.create(**params)
+        response = cclient.client.chat.completions.create(**params)
         response_message = response.choices[0].message
         if response_message.tool_calls:
             print("\n\nfunction call detected.\n\n")
@@ -267,7 +299,7 @@ async def Chat(params: GPT_Module_Params):
 async def ResponsesCall(**kwargs):
     try:
 
-        response = client.responses.create(**kwargs)
+        response = cclient.client.responses.create(**kwargs)
         return response.output_text
     except Exception as e:
         return e
