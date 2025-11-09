@@ -10,7 +10,7 @@ async def test_ing():
 
     print(cclient.vendor)
     system = "You are a helpful assistant."
-    res = await test.generate(system, "What is the meaning of life?")
+    res = await test.generate(system, "write a short haiku about the rule of law over power")
     print(res)
 
 
