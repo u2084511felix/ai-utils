@@ -13,6 +13,7 @@ from aiutils import (
     EmbeddingModels,
     Models,
     reasoning_models,
+    pedantic_resoning,
     brave_client,
     google_client,
     AudioModels
@@ -237,6 +238,9 @@ class Generate(GPTModule):
         if self.model in reasoning_models:
             self.temperature = 1
             self.reasoning_effort = "none"
+        elif self.model in pedantic_resoning:
+            self.temperature = 1
+            self.reasoning_effort = "minimal"
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
