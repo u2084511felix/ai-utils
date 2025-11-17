@@ -280,17 +280,11 @@ class SpeechMode(str, Enum):
     legacy = "legacy"               # whisper-1 + tts-1
 
 
+
 @dataclass
 class SpeechIO:
-    """
-    Helper for speech-to-text and text-to-speech using OpenAI audio models.
-
-    Default preset:
-        - STT: gpt-4o-transcribe  (best quality) 
-        - TTS: gpt-4o-mini-tts     (recommended for interactive / realtime) 
-    """
     mode: SpeechMode = SpeechMode.high_quality
-    tts_voice: str = "nova"         # "alloy", "onyx", "nova", "shimmer", etc. 
+    tts_voice: str = "nova"
     tts_format: str = "mp3"
 
     stt_model: str = field(init=False)
@@ -315,10 +309,6 @@ class SpeechIO:
         language: str | None = None,
         **kwargs: Any,
     ) -> str:
-        """
-        Speech → text using the configured STT model.
-        `file` can be any file-like object (e.g. FastAPI UploadFile.file).
-        """
         params: dict[str, Any] = {
             "model": self.stt_model,
             "file": file,
@@ -328,10 +318,14 @@ class SpeechIO:
             params["language"] = language
         params.update(kwargs)
 
-        # Using the synchronous OpenAI client inside an async method, same as the rest of this file.
+        # Make sure the file pointer is at the beginning
+        try:
+            file.seek(0)
+        except Exception:
+            pass
+
         result = cclient.client.audio.transcriptions.create(**params)
 
-        # For response_format="text" the SDK returns a simple object with `.text`
         if isinstance(result, str):
             return result
         if hasattr(result, "text"):
@@ -348,7 +342,7 @@ class SpeechIO:
     ) -> bytes:
         """
         Text → audio using the configured TTS model.
-        Returns the raw audio bytes (e.g. MP3).
+        Returns raw bytes suitable for base64 encoding.
         """
         v = voice or self.tts_voice
         fmt = response_format or self.tts_format
@@ -361,17 +355,17 @@ class SpeechIO:
         }
         params.update(kwargs)
 
-        result = cclient.client.audio.speech.create(**params)
+        audio_resp = cclient.client.audio.speech.create(**params)
 
-        # In the 1.x SDK this object exposes `.content` for raw bytes.
-        if hasattr(result, "content"):
-            return result.content  # type: ignore[no-any-return]
+        # This is the key: read bytes from the response object
+        if hasattr(audio_resp, "read"):
+            return audio_resp.read()
 
+        # Extra fallback just in case (you probably won't need this)
         try:
-            return bytes(result)  # type: ignore[arg-type]
+            return bytes(audio_resp)  # type: ignore[arg-type]
         except Exception:
-            # Fallback – you can refine this if you like
-            return str(result).encode("utf-8")
+            return str(audio_resp).encode("utf-8")
 
 
 
