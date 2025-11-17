@@ -99,6 +99,9 @@ class AudioModels:
     tts_hd = "tts-1-hd"
     whisper = "whisper-1"
 
+    gpt_audio_mini = "gpt-audio-mini"
+    gpt_audio = "gpt-audio"
+
     # New GPT-4o-based speech-to-text models
     gpt_4o_transcribe = "gpt-4o-transcribe"
     gpt_4o_mini_transcribe = "gpt-4o-mini-transcribe"
