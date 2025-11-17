@@ -93,6 +93,20 @@ class EmbeddingModels:
     legacy = "text-embedding-ada-002"
 
 
+class AudioModels:
+    # Legacy / older audio models
+    tts = "tts-1"
+    tts_hd = "tts-1-hd"
+    whisper = "whisper-1"
+
+    # New GPT-4o-based speech-to-text models
+    gpt_4o_transcribe = "gpt-4o-transcribe"
+    gpt_4o_mini_transcribe = "gpt-4o-mini-transcribe"
+
+    # New GPT-4o-based text-to-speech model
+    gpt_4o_mini_tts = "gpt-4o-mini-tts"
+
+
 class Models:
     text = TextModels
     moderation = "text-moderation-latest"
@@ -100,10 +114,6 @@ class Models:
     vision = "gpt-4-vision-preview"
     images = {
         "latest": "dalle-3",
-        "legacy": "dalle-2"
+        "legacy": "dalle-2",
     }
-    audio = {
-        "tts": "tts-1",
-        "ttshd": "tts-1-hd",
-        "whisper": "whisper-1"
-    }
+    audio = AudioModels
