@@ -189,7 +189,14 @@ class Generate(GPTModule):
                 self.model = TextModels.gemini_25_flash
         else:
             self.model = model
-        self.temperature = temperature
+        if self.model in reasoning_models:
+            self.temperature = 1
+            self.reasoning_effort = "none"
+        elif self.model in pedantic_resoning:
+            self.temperature = 1
+            self.reasoning_effort = "minimal"
+        else:
+            self.temperature = temperature
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
         if self.model in reasoning_models:
