@@ -106,6 +106,14 @@ class AudioModels:
     # New GPT-4o-based text-to-speech model
     gpt_4o_mini_tts = "gpt-4o-mini-tts"
 
+    # New GPT-4o-based realtime models
+    gpt_realtime_2025_08_28 = "gpt-realtime-2025-08-28"
+    gpt_4o_realtime_preview = "gpt-4o-realtime-preview"
+    gpt_4o_realtime_preview_latest = "gpt-4o-realtime-preview-latest"
+    gpt_realtime_mini = "gpt-realtime-mini"
+
+
+
 
 class Models:
     text = TextModels
