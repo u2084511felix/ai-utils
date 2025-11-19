@@ -199,9 +199,7 @@ class Generate(GPTModule):
             self.temperature = temperature
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
-        if self.model in reasoning_models:
-            self.temperature = 1
-            self.reasoning_effort = "none"
+
         self.request_body = make_req_body(self)
 
         if (chat):
