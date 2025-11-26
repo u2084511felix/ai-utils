@@ -183,7 +183,7 @@ class Generate(GPTModule):
 
     async def generate(self, system_message, prompt, model=TextModels.gpt_4_1, temperature=0, chat=True):
         if cclient.vendor == "google":
-            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite:
+            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
             else:
                 self.model = TextModels.gemini_25_flash
@@ -234,7 +234,7 @@ class Generate(GPTModule):
 
     async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_4_1):
         if cclient.vendor == "google":
-            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite:
+            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
             else:
                 self.model = TextModels.gemini_25_flash
@@ -244,8 +244,12 @@ class Generate(GPTModule):
             self.temperature = 1
             self.reasoning_effort = "none"
         elif self.model in pedantic_resoning:
-            self.temperature = 1
-            self.reasoning_effort = "minimal"
+            if cclient.vendor == "google":
+                self.temperature = 0
+                self.reasoning_effort = "low"
+            else:
+                self.temperature = 1
+                self.reasoning_effort = "minimal"
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 

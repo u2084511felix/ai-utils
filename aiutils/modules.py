@@ -257,6 +257,11 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
 
     cclient.set_vendor(vendor)
 
+    if vendor == 'google':
+        max_tokens = 65536
+    else:
+        max_tokens = 32768
+
     if (system_msg == "default"):
         sys_msg = f"""Generate a JSON schema for the given content model."""
     else:
@@ -264,7 +269,7 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
 
     if (params is {}):
         module = create_generator_module(
-            max_tokens=30000, system_message=sys_msg)
+            max_tokens=max_tokens, system_message=sys_msg)
 
     else:
         module = create_generator_module(**params)
