@@ -458,9 +458,8 @@ async def responses_structured_output(model, system_message, prompt, pydantic_mo
         instructions=system_message,
         input=prompt,
         reasoning={
-            "effort": "none"
+            "effort": "low"
         },
-        temperature=0,
         text_format=pydantic_model,
     )
 
