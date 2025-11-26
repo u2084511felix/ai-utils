@@ -462,7 +462,6 @@ async def responses_structured_output(model, system_message, prompt, pydantic_mo
         },
         text_format=pydantic_model,
     )
-    pdb.set_trace()
 
-    output_json = json.loads(response.output_parsed)
-    return output_json
+    json = response.output_parsed.model_dump()
+    return json 
