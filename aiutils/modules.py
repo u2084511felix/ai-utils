@@ -463,5 +463,5 @@ async def responses_structured_output(model, system_message, prompt, pydantic_mo
         text_format=pydantic_model,
     )
 
-    json = response.output_parsed.model_dump()
-    return json 
+    #json = response.output_parsed.model_dump()
+    return response.output_parsed 
