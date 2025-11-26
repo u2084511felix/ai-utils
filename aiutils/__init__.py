@@ -39,8 +39,9 @@ class TextModels:
     o3 = "o3"
     o3_pro = "o3-pro"
     #TODO: Verify account to unlock gpt-5 models
-    # gpt_5 = "gpt-5"
-    # gpt_5_mini = "gpt-5-mini"
+    gpt_5 = "gpt-5"
+    gpt_5_mini = "gpt-5-mini"
+    gpt_5_1 = "gpt-5.1"
     gpt_5_1_codex = "gpt-5.1-codex"
     gpt_5_1_codex_mini = "gpt-5.1-codex-mini"
     gpt_5_nano = "gpt-5-nano"
