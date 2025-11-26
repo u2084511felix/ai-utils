@@ -9,7 +9,7 @@ import inspect
 import sys
 import subprocess
 from datamodel_code_generator import InputFileType, DataModelType, generate
-
+from aiutils import client
 
 
 def run_script_action(action):
@@ -448,3 +448,19 @@ async def GeneratePydanticModelStructuredOutput(prompt, schema_object_filepath, 
         prompt, schema_title, input_type='pydantic', module_name=module_name)
 
     return final_output
+
+
+
+async def responses_structured_output(model, system_message, prompt, pydantic_model):
+    response = client.responses.parse(
+        model=model,
+        instructions=system_message,
+        input=prompt,
+        reasoning={
+            "effort": "none"
+        },
+        temperature=0,
+        text_format=pydantic_model,
+    )
+
+    return response.output_parsed
