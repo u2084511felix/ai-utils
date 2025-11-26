@@ -260,7 +260,10 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
     if vendor == 'google':
         max_tokens = 65536
     else:
-        max_tokens = 32768
+        if model == "gpt-5.1":
+            max_tokens = 128000
+        else:
+            max_tokens = 32768
 
     if (system_msg == "default"):
         sys_msg = f"""Generate a JSON schema for the given content model."""
