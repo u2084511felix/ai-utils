@@ -452,6 +452,7 @@ async def GeneratePydanticModelStructuredOutput(prompt, schema_object_filepath, 
 
 
 async def responses_structured_output(model, system_message, prompt, pydantic_model):
+
     response = client.responses.parse(
         model=model,
         instructions=system_message,

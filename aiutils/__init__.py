@@ -41,6 +41,8 @@ class TextModels:
     #TODO: Verify account to unlock gpt-5 models
     # gpt_5 = "gpt-5"
     # gpt_5_mini = "gpt-5-mini"
+    gpt_5_1_codex = "gpt-5.1-codex"
+    gpt_5_1_codex_mini = "gpt-5.1-codex-mini"
     gpt_5_nano = "gpt-5-nano"
     o1 = "o1"
     o1_preview = "o1-preview"
