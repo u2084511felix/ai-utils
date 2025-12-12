@@ -33,8 +33,6 @@ instruct_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mi
 
 class TextModels:
 
-    # New model names
-
     #Reasoning token models:
     o3 = "o3"
     o3_pro = "o3-pro"
@@ -42,7 +40,9 @@ class TextModels:
     gpt_5 = "gpt-5"
     gpt_5_mini = "gpt-5-mini"
     gpt_5_1 = "gpt-5.1"
+    gpt_5_2 = "gpt-5.2"
     gpt_5_1_codex = "gpt-5.1-codex"
+    gpt_5_2_codex = "gpt-5.2-codex"
     gpt_5_1_codex_mini = "gpt-5.1-codex-mini"
     gpt_5_nano = "gpt-5-nano"
     o1 = "o1"

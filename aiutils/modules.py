@@ -260,7 +260,7 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
     if vendor == 'google':
         max_tokens = 65536
     else:
-        if model == "gpt-5.1":
+        if model in ["gpt-5.1", "gpt-5.2"]:
             max_tokens = 128000
         else:
             max_tokens = 32768
