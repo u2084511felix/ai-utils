@@ -181,7 +181,7 @@ class Generate(GPTModule):
         except Exception as e:
             return e
 
-    async def generate(self, system_message, prompt, model=TextModels.gpt_4_1, temperature=0, chat=True):
+    async def generate(self, system_message, prompt, model=TextModels.gpt_4_1, temperature=0, chat=True, reasoning_effort="default"):
         if cclient.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
@@ -191,10 +191,16 @@ class Generate(GPTModule):
             self.model = model
         if self.model in reasoning_models:
             self.temperature = 1
-            self.reasoning_effort = "none"
+            if reasoning_effort == "default":
+                self.reasoning_effort = "none" 
+            else:
+                self.reasoning_effort = reasoning_effort
         elif self.model in pedantic_resoning:
             self.temperature = 1
-            self.reasoning_effort = "minimal"
+            if reasoning_effort == "default":
+                self.reasoning_effort = "minimal"
+            else:
+                self.reasoning_effort = reasoning_effort
         else:
             self.temperature = temperature
         self.messages.append({"role": "system", "content": system_message})

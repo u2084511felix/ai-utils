@@ -27,7 +27,7 @@ client = OpenAI(
 encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
 # tokenizer = tiktoken.get_encoding(encoding)
 
-pedantic_resoning = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gemini_25_pro",  "gemini-3-pro-preview"]
+pedantic_resoning = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gemini_25_pro",  "gemini-3-pro-preview", "gpt-5.1", "gpt-5.2"]
 reasoning_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "o3", "o3-pro", "o1", "o1-preview", "o1-mini", "o3-mini", "o4-mini"]
 instruct_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-4.5-preview", "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14"]
 
