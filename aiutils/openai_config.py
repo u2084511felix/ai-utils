@@ -178,7 +178,7 @@ class Generate(GPTModule):
 
 
 
-    async def apply_diff(self, prompt):
+    async def apply_diff(self, prompt, filepath):
     
         model = TextModels.gpt_5_2
         tools = [{"type": "apply_patch"}]
@@ -188,7 +188,10 @@ class Generate(GPTModule):
             input=prompt,
             tools=[{"type": "apply_patch"}],
         )
-        for item in response.output:
+        # - update lib/fib.py
+        # - update run.py
+
+        item for item in response.output:
             if item["type"] == "apply_patch_call":
                 operation = item["operation"]
                 diff_type = operation.get("type")  # 'create_file', 'update_file', 'delete_file'
