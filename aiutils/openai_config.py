@@ -286,7 +286,7 @@ class Generate(GPTModule):
 
 
 
-    async def apply_diff(self, prompt):
+    async def apply_diff(self, prompt, filepath):
     
         model = TextModels.gpt_5_2
         tools = [{"type": "apply_patch"}]
@@ -305,6 +305,8 @@ class Generate(GPTModule):
                 operation = item.get("operation")
                 diff_type = operation.get("type")  # 'create_file', 'update_file', 'delete_file'
                 path = operation.get("path")
+                if path != filepath:
+                    path = filepath
                 diff = operation.get("diff")
                 print("diff:")
                 print(f"\n\n{diff}\n\n")
