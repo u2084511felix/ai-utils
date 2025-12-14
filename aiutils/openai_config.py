@@ -308,8 +308,6 @@ class Generate(GPTModule):
                 if path != filepath:
                     path = filepath
                 diff = operation.get("diff")
-                print("diff:")
-                print(f"\n\n{diff}\n\n")
 
                 if diff_type == "create_file":
                     create_file(path, diff)
