@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 import pprint
 from typing import Optional, List, Dict, Any
 from enum import Enum
+import pdb
 
 from aiutils import (
     client,
@@ -191,6 +192,7 @@ class Generate(GPTModule):
         # - update lib/fib.py
         # - update run.py
         for item in response.output:
+            pdb.set_trace()
 
             if item.get("type") == "apply_patch_call":
                 operation = item.get("operation")
