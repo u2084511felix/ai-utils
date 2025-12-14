@@ -178,7 +178,7 @@ class Generate(GPTModule):
 
 
 
-    async def apply_diff(self, prompt, filepath):
+    async def apply_diff(self, prompt):
     
         model = TextModels.gpt_5_2
         tools = [{"type": "apply_patch"}]

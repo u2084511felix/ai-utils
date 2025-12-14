@@ -1,6 +1,6 @@
 [project]
 name = "ai-utils"
-version = "0.3.6"
+version = "0.3.7"
 description = ""
 authors = [
     {name = "u2084511felix",email = "79988595+u2084511felix@users.noreply.github.com"}
