@@ -190,10 +190,10 @@ class Generate(GPTModule):
         )
         # - update lib/fib.py
         # - update run.py
+        for item in response.output:
 
-        item for item in response.output:
-            if item["type"] == "apply_patch_call":
-                operation = item["operation"]
+            if item.get("type") == "apply_patch_call":
+                operation = item.get("operation")
                 diff_type = operation.get("type")  # 'create_file', 'update_file', 'delete_file'
                 path = operation.get("path")
                 diff = operation.get("diff")
