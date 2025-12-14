@@ -202,6 +202,8 @@ class Generate(GPTModule):
                 diff_type = operation.get("type")  # 'create_file', 'update_file', 'delete_file'
                 path = operation.get("path")
                 diff = operation.get("diff")
+                print("diff:")
+                print(f"\n\n{diff}\n\n")
 
                 if diff_type == "create_file":
                     create_file(path, diff)
