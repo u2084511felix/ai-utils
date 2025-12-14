@@ -132,6 +132,42 @@ def make_req_body(module: GPTModule):
     return request_body
 
 
+def create_file(path: str, diff: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(diff)
+    print(f"[create_file] Created file: {path}")
+
+
+def apply_patch(path: str, diff: str):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Target file for patch not found: {path}")
+
+    with NamedTemporaryFile(mode="w+", delete=False, encoding="utf-8") as tmp_diff:
+        tmp_diff.write(diff)
+        tmp_diff_path = tmp_diff.name
+
+    try:
+        subprocess.run(
+            ["patch", path, tmp_diff_path, "--quiet", "--batch"],
+            check=True,
+        )
+        print(f"[apply_patch] Patched file: {path}")
+    except subprocess.CalledProcessError as e:
+        print(f"[apply_patch] Failed to apply patch for {path}: {e}")
+    finally:
+        os.remove(tmp_diff_path)
+
+
+def delete_file(path: str):
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"[delete_file] Deleted file: {path}")
+    else:
+        print(f"[delete_file] File not found (skipped): {path}")
+
+
+
 @dataclass
 class Generate(GPTModule):
     def __init__(self):
@@ -140,7 +176,34 @@ class Generate(GPTModule):
         self.temperature = 0
 
 
-    #super init that swaps the default cclient.client based on the vendor
+
+
+    async def apply_diff(self, prompt):
+    
+        model = TextModels.gpt_5_2
+        tools = [{"type": "apply_patch"}]
+
+        response = cclient.client.responses.create(
+            model=model,
+            input=prompt,
+            tools=[{"type": "apply_patch"}],
+        )
+        for item in response.output:
+            if item["type"] == "apply_patch_call":
+                operation = item["operation"]
+                diff_type = operation.get("type")  # 'create_file', 'update_file', 'delete_file'
+                path = operation.get("path")
+                diff = operation.get("diff")
+
+                if diff_type == "create_file":
+                    create_file(path, diff)
+                elif diff_type == "update_file":
+                    apply_patch(path, diff)
+                elif diff_type == "delete_file":
+                    delete_file(path)
+                else:
+                    print(f"Unknown diff operation type: {diff_type}")
+
 
     async def web_search(self,tool_dict=None, **kwargs) -> str:
         """
