@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import json
 from pydantic import BaseModel
@@ -8,7 +9,10 @@ from enum import Enum
 import pdb
 import subprocess
 from tempfile import NamedTemporaryFile
+#!/usr/bin/env python3
 
+import sys
+from pathlib import Path
 
 from aiutils import (
     client,
@@ -143,32 +147,132 @@ def create_file(path: str, diff: str):
     print(f"[create_file] Created file: {path}")
 
 
-def apply_patch(path: str, diff: str):
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Target file for patch not found: {path}")
-
-    with NamedTemporaryFile(mode="w+", delete=False, encoding="utf-8") as tmp_diff:
-        tmp_diff.write(diff)
-        tmp_diff_path = tmp_diff.name
-
-    try:
-        subprocess.run(
-            ["patch", path, tmp_diff_path, "--quiet", "--batch"],
-            check=True,
-        )
-        print(f"[apply_patch] Patched file: {path}")
-    except subprocess.CalledProcessError as e:
-        print(f"[apply_patch] Failed to apply patch for {path}: {e}")
-    finally:
-        os.remove(tmp_diff_path)
 
 
-def delete_file(path: str):
-    if os.path.exists(path):
-        os.remove(path)
-        print(f"[delete_file] Deleted file: {path}")
-    else:
-        print(f"[delete_file] File not found (skipped): {path}")
+
+
+class V4APatchError(RuntimeError):
+    pass
+
+
+def _detect_newline_style(text: str) -> str:
+    if "\r\n" in text:
+        return "\r\n"
+    if "\r" in text and "\n" not in text:
+        return "\r"
+    return "\n"
+
+
+def _has_trailing_newline(text: str) -> bool:
+    return text.endswith("\n") or text.endswith("\r")
+
+
+def _find_subsequence(haystack: list[str], needle: list[str], start: int) -> int:
+    if not needle:
+        return start
+    n = len(needle)
+    for i in range(start, len(haystack) - n + 1):
+        if haystack[i : i + n] == needle:
+            return i
+    return -1
+
+
+def apply_v4a_diff_text(input_text: str, diff: str) -> str:
+    """
+    Apply a headerless V4A diff to input_text.
+
+    Lines:
+      ' ' + content  => context (must match)
+      '-' + content  => deletion (must match then removed)
+      '+' + content  => insertion
+    Hunks separated by lines starting with '@@' (marker only; no ranges).
+    """
+    newline = _detect_newline_style(input_text)
+    had_trailing_nl = _has_trailing_newline(input_text)
+
+    original = input_text.splitlines()
+    diff_lines = (diff or "").splitlines()
+
+    # Split into hunks at '@@' markers (marker line not included)
+    hunks: list[list[str]] = []
+    cur: list[str] = []
+    for line in diff_lines:
+        if line.startswith("@@"):
+            if cur:
+                hunks.append(cur)
+                cur = []
+            continue
+
+        # Valid V4A diff lines are at least 1 char ('+', '-', or ' ')
+        if line == "":
+            raise V4APatchError("Invalid V4A diff: encountered empty line without a prefix.")
+        if line[0] not in (" ", "+", "-"):
+            raise V4APatchError(f"Invalid V4A diff prefix {line[0]!r} in line: {line[:80]!r}")
+
+        cur.append(line)
+
+    if cur:
+        hunks.append(cur)
+
+    out: list[str] = []
+    pos = 0
+
+    for hunk in hunks:
+        # Build match needle from all non-addition lines (context + deletions)
+        needle = [ln[1:] for ln in hunk if ln[0] in (" ", "-")]
+
+        start = _find_subsequence(original, needle, pos)
+        if start < 0:
+            preview = "\n".join(hunk[:12])
+            raise V4APatchError(
+                "Could not apply V4A diff: hunk context not found.\n"
+                f"Hunk preview:\n{preview}"
+            )
+
+        out.extend(original[pos:start])
+
+        idx = start
+        for ln in hunk:
+            tag, content = ln[0], ln[1:]
+
+            if tag == " ":
+                if idx >= len(original) or original[idx] != content:
+                    raise V4APatchError(
+                        f"Context mismatch.\nExpected: {content!r}\nFound: "
+                        f"{(original[idx] if idx < len(original) else None)!r}"
+                    )
+                out.append(content)
+                idx += 1
+
+            elif tag == "-":
+                if idx >= len(original) or original[idx] != content:
+                    raise V4APatchError(
+                        f"Deletion mismatch.\nExpected: {content!r}\nFound: "
+                        f"{(original[idx] if idx < len(original) else None)!r}"
+                    )
+                idx += 1  # skip = delete
+
+            elif tag == "+":
+                out.append(content)
+
+        pos = idx
+
+    out.extend(original[pos:])
+
+    result = newline.join(out)
+    if had_trailing_nl:
+        result += newline
+    return result
+
+
+def apply_patch(path, diff):
+    file_path = Path(path)
+    old = file_path.read_text(encoding="utf-8")
+    new = apply_v4a_diff_text(old, diff)
+    file_path.write_text(new, encoding="utf-8")
+
+
+
 
 
 
@@ -213,6 +317,8 @@ class Generate(GPTModule):
                     delete_file(path)
                 else:
                     print(f"Unknown diff operation type: {diff_type}")
+
+                print(f"Applied {diff_type} patch to {path}")
 
 
     async def web_search(self,tool_dict=None, **kwargs) -> str:
