@@ -192,7 +192,7 @@ class Generate(GPTModule):
         # - update lib/fib.py
         # - update run.py
         for item in response.output:
-            pdb.set_trace()
+            item = item.model_dump()
 
             if item.get("type") == "apply_patch_call":
                 operation = item.get("operation")
