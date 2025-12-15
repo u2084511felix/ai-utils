@@ -279,7 +279,7 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
-    async def apply_diff(self, prompt, filepath):
+    async def apply_diff(self, prompt, filepath, verbose=False):
 
         model = TextModels.gpt_5_2
         tools = [{"type": "apply_patch"}]
@@ -289,6 +289,10 @@ class Generate(GPTModule):
             input=prompt,
             tools=[{"type": "apply_patch"}],
         )
+        if verbose == True:
+            pr = response.model_dump()
+            pprint.pprint(pr)
+
         # - update lib/fib.py
         # - update run.py
         for item in response.output:
