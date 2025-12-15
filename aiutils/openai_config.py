@@ -33,12 +33,12 @@ from importlib import reload
 
 class Client:
     def __init__(self):
-        self.client = client 
+        self.client = client
         self.vendor = "openai"
 
     def set_vendor(self, vendor):
         if vendor == "openai":
-            self.client = client 
+            self.client = client
             self.vendor = "openai"
         elif vendor == "google":
             self.client = google_client
@@ -47,7 +47,9 @@ class Client:
             self.client = brave_client
             self.vendor = "brave"
 
+
 cclient = Client()
+
 
 def clean_pydantic_model(model):
     model_dict = model.dict()
@@ -75,11 +77,11 @@ class SearchTools(BaseModel):
     user_location: Optional[UserLocation] = None
 
 
-
 class WebSearchResponsesModel(BaseModel):
     model: str = f"{TextModels.gpt_4_1_nano}"
     tools: List = [SearchTools]
     input: str = None
+
 
 class GPT_Module_Params(BaseModel):
     messages: list
@@ -147,10 +149,6 @@ def create_file(path: str, diff: str):
     print(f"[create_file] Created file: {path}")
 
 
-
-
-
-
 class V4APatchError(RuntimeError):
     pass
 
@@ -172,7 +170,7 @@ def _find_subsequence(haystack: list[str], needle: list[str], start: int) -> int
         return start
     n = len(needle)
     for i in range(start, len(haystack) - n + 1):
-        if haystack[i : i + n] == needle:
+        if haystack[i: i + n] == needle:
             return i
     return -1
 
@@ -205,9 +203,11 @@ def apply_v4a_diff_text(input_text: str, diff: str) -> str:
 
         # Valid V4A diff lines are at least 1 char ('+', '-', or ' ')
         if line == "":
-            raise V4APatchError("Invalid V4A diff: encountered empty line without a prefix.")
+            raise V4APatchError(
+                "Invalid V4A diff: encountered empty line without a prefix.")
         if line[0] not in (" ", "+", "-"):
-            raise V4APatchError(f"Invalid V4A diff prefix {line[0]!r} in line: {line[:80]!r}")
+            raise V4APatchError(f"Invalid V4A diff prefix {
+                                line[0]!r} in line: {line[:80]!r}")
 
         cur.append(line)
 
@@ -272,10 +272,6 @@ def apply_patch(path, diff):
     file_path.write_text(new, encoding="utf-8")
 
 
-
-
-
-
 @dataclass
 class Generate(GPTModule):
     def __init__(self):
@@ -283,11 +279,8 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
-
-
-
     async def apply_diff(self, prompt, filepath):
-    
+
         model = TextModels.gpt_5_2
         tools = [{"type": "apply_patch"}]
 
@@ -298,13 +291,13 @@ class Generate(GPTModule):
         )
         # - update lib/fib.py
         # - update run.py
-        pdb.set_trace()
         for item in response.output:
             item = item.model_dump()
 
             if item.get("type") == "apply_patch_call":
                 operation = item.get("operation")
-                diff_type = operation.get("type")  # 'create_file', 'update_file', 'delete_file'
+                # 'create_file', 'update_file', 'delete_file'
+                diff_type = operation.get("type")
                 path = operation.get("path")
                 if path != filepath:
                     path = filepath
@@ -321,8 +314,7 @@ class Generate(GPTModule):
 
                 print(f"Applied {diff_type} patch to {path}")
 
-
-    async def web_search(self,tool_dict=None, **kwargs) -> str:
+    async def web_search(self, tool_dict=None, **kwargs) -> str:
         """
         kwargs:
             model: str = f"{TextModels.hipster_mini}"
@@ -372,7 +364,7 @@ class Generate(GPTModule):
         if self.model in reasoning_models:
             self.temperature = 1
             if reasoning_effort == "default":
-                self.reasoning_effort = "none" 
+                self.reasoning_effort = "none"
             else:
                 self.reasoning_effort = reasoning_effort
         elif self.model in pedantic_resoning:
@@ -472,12 +464,12 @@ Audio Models
 
 """
 
+
 class SpeechMode(str, Enum):
     """High level presets for your audio pipeline."""
     high_quality = "high_quality"   # gpt-4o-transcribe + gpt-4o-mini-tts
     fast = "fast"                   # gpt-4o-mini-transcribe + gpt-4o-mini-tts
     legacy = "legacy"               # whisper-1 + tts-1
-
 
 
 @dataclass
@@ -565,8 +557,6 @@ class SpeechIO:
             return bytes(audio_resp)  # type: ignore[arg-type]
         except Exception:
             return str(audio_resp).encode("utf-8")
-
-
 
 
 def create_generator_module(**kwargs):
