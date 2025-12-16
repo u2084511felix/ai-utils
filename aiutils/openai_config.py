@@ -414,7 +414,7 @@ class Generate(GPTModule):
     def call_function(self, function_response, available_functions):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
-    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_4_1k reasoning_effort="default"):
+    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_4_1k, reasoning_effort="default"):
         if cclient.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
