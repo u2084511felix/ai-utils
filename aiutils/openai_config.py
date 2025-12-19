@@ -12,7 +12,9 @@ from tempfile import NamedTemporaryFile
 #!/usr/bin/env python3
 
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import posixpath
+from difflib import SequenceMatcher
 
 from aiutils import (
     client,
@@ -29,6 +31,46 @@ from aiutils import (
 
 import importlib
 from importlib import reload
+
+def _norm(p: str) -> str:
+    return posixpath.normpath(p)
+
+def closest_path_stdlib(query: str, choices: list[str]) -> str | None:
+    if not choices:
+        return None
+
+    qn = _norm(query)
+    qpp = PurePosixPath(qn)
+    q_name = qpp.name
+    q_parent = str(qpp.parent)
+
+    norm_choices = [(_norm(c), c) for c in choices]
+    same_name = [(nc, orig) for (nc, orig) in norm_choices if PurePosixPath(nc).name == q_name]
+    candidates = same_name if same_name else norm_choices
+
+    def ratio(a: str, b: str) -> float:
+        return SequenceMatcher(None, a, b).ratio()  # 0..1
+
+    def score(nc: str) -> float:
+        cpp = PurePosixPath(nc)
+        c_parent = str(cpp.parent)
+
+        dir_sim = ratio(q_parent, c_parent)  # 0..1
+
+        # common suffix boost
+        q_parts = qpp.parts[:-1]
+        c_parts = cpp.parts[:-1]
+        common_suffix = 0
+        for a, b in zip(reversed(q_parts), reversed(c_parts)):
+            if a != b:
+                break
+            common_suffix += 1
+
+        return dir_sim + 0.08 * common_suffix
+
+    best_norm, best_orig = max(candidates, key=lambda t: score(t[0]))
+    return best_orig
+
 
 
 class Client:
@@ -279,7 +321,7 @@ class Generate(GPTModule):
         self.messages = []
         self.temperature = 0
 
-    async def apply_diff(self, prompt, filepath, verbose=False):
+    async def apply_diff(self, prompt, filepaths, verbose=False):
 
         model = TextModels.gpt_5_2
         tools = [{"type": "apply_patch"}]
@@ -303,8 +345,9 @@ class Generate(GPTModule):
                 # 'create_file', 'update_file', 'delete_file'
                 diff_type = operation.get("type")
                 path = operation.get("path")
-                if path != filepath:
-                    path = filepath
+
+                if path not in filepaths:
+                    path = closest_path_stdlib(path, filepaths)
                 diff = operation.get("diff")
 
                 if diff_type == "create_file":
