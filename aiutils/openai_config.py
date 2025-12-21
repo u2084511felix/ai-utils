@@ -419,7 +419,6 @@ class Generate(GPTModule):
                 elif diff_type == "update_file":
                     apply_patch(path, diff)
                     print(f"Applied {diff_type} patch to {path}")
-                    return diff
                 elif diff_type == "delete_file":
                     delete_file(path)
                 else:
