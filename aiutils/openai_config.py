@@ -4,7 +4,7 @@ import json
 from pydantic import BaseModel
 from dataclasses import dataclass, field
 import pprint
-from typing import Optional, List, Dict, Any
+from typing import Literal, Optional, List, Dict, Any
 from enum import Enum
 import pdb
 import subprocess
@@ -184,15 +184,8 @@ def make_req_body(module: GPTModule):
     return request_body
 
 
-def create_file(path: str, diff: str):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(diff)
-    print(f"[create_file] Created file: {path}")
 
 
-class V4APatchError(RuntimeError):
-    pass
 
 
 def _detect_newline_style(text: str) -> str:
@@ -217,40 +210,55 @@ def _find_subsequence(haystack: list[str], needle: list[str], start: int) -> int
     return -1
 
 
-def apply_v4a_diff_text(input_text: str, diff: str) -> str:
+class V4APatchError(RuntimeError):
+    pass
+
+ApplyV4AMode = Literal["default", "create"]
+
+def apply_v4a_diff_text(input_text: str, diff: str, mode: ApplyV4AMode = "default") -> str:
     """
     Apply a headerless V4A diff to input_text.
 
-    Lines:
-      ' ' + content  => context (must match)
-      '-' + content  => deletion (must match then removed)
-      '+' + content  => insertion
-    Hunks separated by lines starting with '@@' (marker only; no ranges).
+    mode="default":
+      ' ' context, '-' delete, '+' insert, hunks separated by '@@'
+    mode="create":
+      create-file syntax: every non-'@@' line must start with '+'
     """
+    diff_lines = (diff or "").splitlines()
+
+    if mode == "create":
+        out: list[str] = []
+        for line in diff_lines:
+            if line.startswith("@@"):
+                continue
+            if line == "":
+                raise V4APatchError("Invalid V4A create diff: empty line without '+' prefix.")
+            if not line.startswith("+"):
+                raise V4APatchError(
+                    f"Invalid V4A create diff: expected '+' prefix, got {line[:80]!r}"
+                )
+            out.append(line[1:])
+        # For create, newline style is your choice; default to '\n'
+        return "\n".join(out)
+
+    # --- default/update mode (your existing logic) ---
     newline = _detect_newline_style(input_text)
     had_trailing_nl = _has_trailing_newline(input_text)
 
     original = input_text.splitlines()
-    diff_lines = (diff or "").splitlines()
-
-    # Split into hunks at '@@' markers (marker line not included)
     hunks: list[list[str]] = []
     cur: list[str] = []
+
     for line in diff_lines:
         if line.startswith("@@"):
             if cur:
                 hunks.append(cur)
                 cur = []
             continue
-
-        # Valid V4A diff lines are at least 1 char ('+', '-', or ' ')
         if line == "":
-            raise V4APatchError(
-                "Invalid V4A diff: encountered empty line without a prefix.")
+            raise V4APatchError("Invalid V4A diff: encountered empty line without a prefix.")
         if line[0] not in (" ", "+", "-"):
-            raise V4APatchError(f"Invalid V4A diff prefix {
-                                line[0]!r} in line: {line[:80]!r}")
-
+            raise V4APatchError(f"Invalid V4A diff prefix {line[0]!r} in line: {line[:80]!r}")
         cur.append(line)
 
     if cur:
@@ -260,9 +268,7 @@ def apply_v4a_diff_text(input_text: str, diff: str) -> str:
     pos = 0
 
     for hunk in hunks:
-        # Build match needle from all non-addition lines (context + deletions)
         needle = [ln[1:] for ln in hunk if ln[0] in (" ", "-")]
-
         start = _find_subsequence(original, needle, pos)
         if start < 0:
             preview = "\n".join(hunk[:12])
@@ -276,7 +282,6 @@ def apply_v4a_diff_text(input_text: str, diff: str) -> str:
         idx = start
         for ln in hunk:
             tag, content = ln[0], ln[1:]
-
             if tag == " ":
                 if idx >= len(original) or original[idx] != content:
                     raise V4APatchError(
@@ -285,16 +290,14 @@ def apply_v4a_diff_text(input_text: str, diff: str) -> str:
                     )
                 out.append(content)
                 idx += 1
-
             elif tag == "-":
                 if idx >= len(original) or original[idx] != content:
                     raise V4APatchError(
                         f"Deletion mismatch.\nExpected: {content!r}\nFound: "
                         f"{(original[idx] if idx < len(original) else None)!r}"
                     )
-                idx += 1  # skip = delete
-
-            elif tag == "+":
+                idx += 1
+            else:  # '+'
                 out.append(content)
 
         pos = idx
@@ -307,11 +310,25 @@ def apply_v4a_diff_text(input_text: str, diff: str) -> str:
     return result
 
 
+
 def apply_patch(path, diff):
     file_path = Path(path)
     old = file_path.read_text(encoding="utf-8")
     new = apply_v4a_diff_text(old, diff)
     file_path.write_text(new, encoding="utf-8")
+
+def create_file(path: str, diff: str):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    file_path = Path(path)
+    new = apply_v4a_diff_text(file_path.read_text(encoding="utf-8"), diff, mode="create")
+    file_path.write_text(new, encoding="utf-8")
+    print(f"Created file: {path}")
+
+
+def delete_file(path: str):
+    file_path = Path(path)
+    file_path.unlink()
+    print(f"Deleted file: {path}")
 
 
 @dataclass
