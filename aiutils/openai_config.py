@@ -318,9 +318,8 @@ def apply_patch(path, diff):
     file_path.write_text(new, encoding="utf-8")
 
 def create_file(path: str, diff: str):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
     file_path = Path(path)
-    new = apply_v4a_diff_text(file_path.read_text(encoding="utf-8"), diff, mode="create")
+    new = apply_v4a_diff_text("", diff, mode="create")
     file_path.write_text(new, encoding="utf-8")
     print(f"Created file: {path}")
 
