@@ -430,18 +430,17 @@ class Generate(GPTModule):
 
     def undo_last_diffs(self):
         last_diffs = load_last_diffs()
-        for id, path in last_diffs.items():
-            cwd = os.getcwd()
-            diff_path = cwd + "/diff_tmp/" + id + ".txt"
-            with open(diff_path, "r") as f:
-                diff = f.read()
-            undo_diff = invert_v4a_diff(diff)
-            try:
+        try:
+            for id, path in last_diffs.items():
+                cwd = os.getcwd()
+                diff_path = cwd + "/diff_tmp/" + id + ".txt"
+                with open(diff_path, "r") as f:
+                    diff = f.read()
+                undo_diff = invert_v4a_diff(diff)
                 apply_patch(path, undo_diff)
-                #delete diff file
-                os.remove(diff_path)
-            except Exception as e:
-                print(f"Error while undoing diff: {e}")
+            os.remove(diff_path)
+        except Exception as e:
+            print(f"Error while undoing diff: {e}")
 
 
 
