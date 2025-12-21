@@ -271,7 +271,7 @@ def apply_v4a_diff_text(input_text: str, diff: str, mode: ApplyV4AMode = "defaul
         needle = [ln[1:] for ln in hunk if ln[0] in (" ", "-")]
         start = _find_subsequence(original, needle, pos)
         if start < 0:
-            preview = "\n".join(hunk[:12])
+            preview = "\n".join(hunk)
             raise V4APatchError(
                 "Could not apply V4A diff: hunk context not found.\n"
                 f"Hunk preview:\n{preview}"
@@ -308,6 +308,48 @@ def apply_v4a_diff_text(input_text: str, diff: str, mode: ApplyV4AMode = "defaul
     if had_trailing_nl:
         result += newline
     return result
+
+
+
+
+
+def invert_v4a_diff(diff: str) -> str:
+    out = []
+    for line in diff.splitlines():
+        if line.startswith("@@"):
+            out.append(line)
+        elif line.startswith("+"):
+            out.append("-" + line[1:])
+        elif line.startswith("-"):
+            out.append("+" + line[1:])
+        elif line.startswith(""):
+            out.append(line)
+        elif line == "":
+            # If your generator ever emits truly empty lines (rare), preserve them.
+            out.append(line)
+        else:
+            raise ValueError(f"Invalid V4A diff line: {line!r}")
+    return "\n".join(out)
+
+
+def load_last_diffs():
+    cwd = os.getcwd()
+    last_diffs_path = cwd + "/last_diffs.json"
+    with open(last_diffs_path, "r") as f:
+        last_diffs = json.load(f)
+    return last_diffs
+
+def save_last_diffs(last_diffs):
+    cwd = os.getcwd()
+    last_diffs_path = cwd + "/last_diffs.json"
+    with open(last_diffs_path, "w") as f:
+        json.dump(last_diffs, f, indent=4)
+
+def save_diff(id, diff):
+    cwd = os.getcwd()
+    diff_path = cwd + "/diff_tmp/" + id + ".txt"
+    with open(diff_path, "w") as f:
+        f.write(diff)
 
 
 
@@ -353,29 +395,56 @@ class Generate(GPTModule):
 
         # - update lib/fib.py
         # - update run.py
+        last_diffs = {}
         for item in response.output:
             item = item.model_dump()
 
+
             if item.get("type") == "apply_patch_call":
                 operation = item.get("operation")
+                id = item.get("id")
                 # 'create_file', 'update_file', 'delete_file'
                 diff_type = operation.get("type")
                 path = operation.get("path")
 
                 if path not in filepaths:
                     path = closest_path_stdlib(path, filepaths)
-                diff = operation.get("diff")
+                if operation.get("diff") is not None:
+                    diff = operation.get("diff")
+                    last_diffs[id] = path 
+                    save_diff(id, diff)
 
                 if diff_type == "create_file":
                     create_file(path, diff)
                 elif diff_type == "update_file":
                     apply_patch(path, diff)
+                    print(f"Applied {diff_type} patch to {path}")
+                    return diff
                 elif diff_type == "delete_file":
                     delete_file(path)
                 else:
                     print(f"Unknown diff operation type: {diff_type}")
 
+                save_last_diffs(last_diffs)
                 print(f"Applied {diff_type} patch to {path}")
+
+
+    def undo_last_diffs(self):
+        last_diffs = load_last_diffs()
+        for id, path in last_diffs.items():
+            cwd = os.getcwd()
+            diff_path = cwd + "/diff_tmp/" + id + ".txt"
+            with open(diff_path, "r") as f:
+                diff = f.read()
+            undo_diff = invert_v4a_diff(diff)
+            try:
+                apply_patch(path, undo_diff)
+                #delete diff file
+                os.remove(diff_path)
+            except Exception as e:
+                print(f"Error while undoing diff: {e}")
+
+
 
     async def web_search(self, tool_dict=None, **kwargs) -> str:
         """
