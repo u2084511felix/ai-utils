@@ -526,7 +526,7 @@ class Generate(GPTModule):
             return response_body
 
     async def continued_response(self, assistant_response, prompt):
-        self.messages.append({"role": "assistant", "content": prompt})
+        self.messages.append({"role": "assistant", "content": assistant_response})
         self.messages.append({"role": "user", "content": prompt})
         self.request_body = make_req_body(self)
 

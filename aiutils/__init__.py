@@ -36,7 +36,6 @@ class TextModels:
     #Reasoning token models:
     o3 = "o3"
     o3_pro = "o3-pro"
-    #TODO: Verify account to unlock gpt-5 models
     gpt_5 = "gpt-5"
     gpt_5_mini = "gpt-5-mini"
     gpt_5_1 = "gpt-5.1"
