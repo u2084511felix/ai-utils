@@ -348,10 +348,9 @@ def save_last_diffs(last_diffs):
 
 def save_diff(id, diff):
     cwd = os.getcwd()
-    path = cwd + "/diff_tmp/"
     diff_path = cwd + "/diff_tmp/" + id + ".txt"
-    #ensure the directory exists
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    path = cwd + "/diff_tmp"
+    os.makedirs(path, exist_ok=True)
     with open(diff_path, "w") as f:
         f.write(diff)
 
