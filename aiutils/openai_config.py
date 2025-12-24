@@ -399,6 +399,7 @@ class Generate(GPTModule):
         # - update lib/fib.py
         # - update run.py
         last_diffs = {}
+
         for item in response.output:
             item = item.model_dump()
 
@@ -414,21 +415,30 @@ class Generate(GPTModule):
                     path = closest_path_stdlib(path, filepaths)
                 if operation.get("diff") is not None:
                     diff = operation.get("diff")
-                    last_diffs[id] = path 
-                    save_diff(id, diff)
+
 
                 if diff_type == "create_file":
                     create_file(path, diff)
+
                 elif diff_type == "update_file":
-                    apply_patch(path, diff)
+                    try:
+                        apply_patch(path, diff)
+                    except Exception as e:
+                        print(f"Error while applying patch: {e}")
+
+                    last_diffs[id] = path 
+                    save_diff(id, diff)
+                    save_last_diffs(last_diffs)
                     print(f"Applied {diff_type} patch to {path}")
+
                 elif diff_type == "delete_file":
                     delete_file(path)
+
                 else:
                     print(f"Unknown diff operation type: {diff_type}")
 
-                save_last_diffs(last_diffs)
                 print(f"Applied {diff_type} patch to {path}")
+
 
 
     def undo_last_diffs(self):
