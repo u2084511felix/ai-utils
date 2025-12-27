@@ -16,6 +16,12 @@ class PromptEngine():
     def set_prompt(self):
         self.prompt = Path(self.filepath).read_text(encoding="utf-8").format(**self.kwargs)
 
+    def set_template_prompt(self):
+        self.prompt = Template(Path(self.filepath).read_text(encoding="utf-8")).render(kwargs=self.kwargs)
+
+    def save_prompt(self, path):
+        Path(path).write_text(self.prompt)
+
 
 class Refactor():
     def __init__(self):

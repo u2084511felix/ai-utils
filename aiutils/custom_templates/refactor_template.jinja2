@@ -1,0 +1,88 @@
+{# prompt_template.j2 - generic prompt assembly template #}
+
+{{ boilerplate_instructions }}
+
+{% if system_notes %}
+SYSTEM NOTES
+====================
+{{ system_notes }}
+
+{% endif %}
+
+{% if instructions %}
+TASK INSTRUCTIONS
+====================
+{{ instructions }}
+
+{% endif %}
+
+{% if constraints and constraints|length %}
+CONSTRAINTS
+====================
+{% for c in constraints %}
+- {{ c }}
+{% endfor %}
+
+{% endif %}
+
+{% if tools %}
+TOOLS / EXECUTION MODE
+====================
+{% if tools.name %}- Tool: {{ tools.name }}{% endif %}
+{% if tools.mode %}- Mode: {{ tools.mode }}{% endif %}
+
+{% if tools.rules and tools.rules|length %}
+Rules:
+{% for r in tools.rules %}
+- {{ r }}
+{% endfor %}
+{% endif %}
+
+{% if tools.targets and tools.targets|length %}
+Targets:
+{% for t in tools.targets %}
+- {{ t }}
+{% endfor %}
+{% endif %}
+
+{% endif %}
+
+{% if context and context|length %}
+CONTEXT (KWARGS)
+====================
+{# context is intended for small key/value context, not huge file blobs #}
+{% for k, v in context.items() %}
+- {{ k }}: {{ v }}
+{% endfor %}
+
+{% endif %}
+
+{% if inputs and inputs|length %}
+INPUTS
+====================
+{# inputs are large blocks: files, excerpts, json dumps, logs, etc. #}
+{% for item in inputs %}
+{{ item.title }}
+{% if item.meta %}
+{% for mk, mv in item.meta.items() %}- {{ mk }}: {{ mv }}
+{% endfor %}
+{% endif %}
+--------------------
+{{ item.content }}
+
+{% endfor %}
+{% endif %}
+
+{% if output_requirements and output_requirements|length %}
+OUTPUT REQUIREMENTS
+====================
+{% for r in output_requirements %}
+- {{ r }}
+{% endfor %}
+
+{% endif %}
+
+{% if footer %}
+{{ footer }}
+{% endif %}
+
