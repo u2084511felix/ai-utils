@@ -16,7 +16,11 @@ class PromptEngine():
     def set_prompt(self):
         self.prompt = Path(self.filepath).read_text(encoding="utf-8").format(**self.kwargs)
 
-    def set_template_prompt(self):
+    def set_template_prompt(self, filepath="default"):
+
+        if filepath == "default":
+            self.filepath = os.path.join(os.path.dirname(__file__), "custom_templates/prompt_template.j2")
+
         self.prompt = Template(Path(self.filepath).read_text(encoding="utf-8")).render(kwargs=self.kwargs)
 
     def save_prompt(self, path):

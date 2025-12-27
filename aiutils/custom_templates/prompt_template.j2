@@ -1,0 +1,12 @@
+{# prompt_template.j2 #}
+{% if kwargs and kwargs|length %}
+{% for k, v in kwargs.items() %}
+{{ k }}: 
+{{ v }}
+
+
+{% endfor %}
+{% endif %}
+
+OUTPUT REQUIREMENTS:
+- Produce a unified diff for the instructed edits, using the 'apply_patch' tool using the given absolute path for the target file. Make sure that the diff content matched the actual code context for the refactor task. Do not generate malformed diffs with incorrect hunks.
