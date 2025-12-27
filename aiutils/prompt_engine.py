@@ -44,7 +44,6 @@ class Refactor():
 
     async def refactor_script(self):
         generator = Generate()
-        self.prompt_engine.set_prompt()
 
         print(f"Generating diff ...")
         await generator.apply_diff(self.prompt_engine.prompt, self.target_file_paths, verbose=self.verbose)
