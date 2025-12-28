@@ -51,4 +51,3 @@ class Refactor():
 
         print(f"Generating diff ...")
         await generator.apply_diff(self.prompt_engine.prompt, self.target_file_paths, verbose=self.verbose)
-        print(f"Successfully generated ...")

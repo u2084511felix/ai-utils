@@ -501,7 +501,7 @@ class Generate(GPTModule):
         except Exception as e:
             return e
 
-    async def generate(self, system_message, prompt, model=TextModels.gpt_4_1, temperature=0, chat=True, reasoning_effort="default"):
+    async def generate(self, system_message, prompt, model=TextModels.gpt_5_2, temperature=0, chat=True, reasoning_effort="default"):
         if cclient.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
@@ -509,6 +509,9 @@ class Generate(GPTModule):
                 self.model = TextModels.gemini_25_flash
         else:
             self.model = model
+
+
+
         if self.model in reasoning_models:
             self.temperature = 1
             if reasoning_effort == "default":
@@ -523,6 +526,8 @@ class Generate(GPTModule):
                 self.reasoning_effort = reasoning_effort
         else:
             self.temperature = temperature
+
+
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
@@ -558,7 +563,7 @@ class Generate(GPTModule):
     def call_function(self, function_response, available_functions):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
-    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_4_1, reasoning_effort="default"):
+    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_5_2, reasoning_effort="default"):
         if cclient.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
@@ -566,6 +571,9 @@ class Generate(GPTModule):
                 self.model = TextModels.gemini_25_flash
         else:
             self.model = model
+
+
+
         if self.model in reasoning_models:
             self.temperature = 1
             if reasoning_effort == "default":
@@ -578,6 +586,12 @@ class Generate(GPTModule):
                 self.reasoning_effort = "minimal"
             else:
                 self.reasoning_effort = reasoning_effort
+        else:
+            self.temperature = temperature
+
+
+
+
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
@@ -588,7 +602,6 @@ class Generate(GPTModule):
                 "json_schema": schema
             }
             self.request_body = make_req_body(self)
-            pprint.pprint(self.request_body)
             response = await ChatBody(self.request_body, input_type)
 
         elif (input_type == 'pydantic'):
