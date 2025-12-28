@@ -528,6 +528,7 @@ class Generate(GPTModule):
             self.temperature = temperature
 
 
+
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
@@ -587,7 +588,7 @@ class Generate(GPTModule):
             else:
                 self.reasoning_effort = reasoning_effort
         else:
-            self.temperature = temperature
+            self.temperature = 0 
 
 
 

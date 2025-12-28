@@ -41,7 +41,7 @@ class Refactor():
         with open(path, "r") as f:
             return f.read()
 
-    def undo_diffs():
+    def undo_diffs(self):
         generator = Generate()
         generator.undo_last_diffs()
 
