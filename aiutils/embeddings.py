@@ -1,6 +1,7 @@
 from openai import OpenAI
 from aiutils import client, EmbeddingModels
 import tiktoken
+from typing import List
 
 encoding_name = 'cl100k_base'
 
