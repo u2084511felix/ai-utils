@@ -92,9 +92,20 @@ class TextModels:
 
 
 class EmbeddingModels:
+    """
+    cost = tokens per dollar
+
+    models                     cost            score   max_tokens
+    text-embedding-3-small	   50,000,000	   62.3%   8192
+    text-embedding-3-large	   7,692,000	   64.6%   8192
+    text-embedding-ada-002	   10,000,000	   61.0%   8192
+
+    """
     large = "text-embedding-3-large"
     small = "text-embedding-3-small"
     legacy = "text-embedding-ada-002"
+
+
 
 
 class AudioModels:
