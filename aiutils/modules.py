@@ -42,7 +42,7 @@ def save_json_file(data, file_name):
     print(f"File saved to: {file_path}")
 
 
-async def legacy_structured_output(prompt, schema, system_msg="default"):
+async def legacy_structured_output(prompt, schema, system_msg="default", debug):
 
     if (system_msg == "default"):
         system_message = "Supply the function variables for the given function according to the instruction."
@@ -68,11 +68,13 @@ async def legacy_structured_output(prompt, schema, system_msg="default"):
 
     legacy_structured_output = legacy_structured_output[0].function.arguments
     output_json = json.loads(legacy_structured_output)
-    save_json_file(output_json, "finaloutput.json")
+    
+    #save_json_file(output_json, "finaloutput.json")
+    
     return legacy_structured_output
 
 
-async def generate_legacy_structured_output_schema(json_object, system_msg="default"):
+async def generate_legacy_structured_output_schema(json_object, system_msg="default", debug=False):
 
     transforn_prompt = "Transform this JSON object: " + str(json_object)
     SchemaGenerator = Generate()
@@ -138,7 +140,10 @@ async def generate_legacy_structured_output_schema(json_object, system_msg="defa
 
     generated_schema = generated_schema[0].function.arguments
     output_json = json.loads(generated_schema)
-    save_json_file(output_json, "schema_output.json")
+
+    if debug:
+        #save_json_file(output_json, "schema_output.json")
+        pass
 
     return generated_schema
 
@@ -248,7 +253,7 @@ async def generate_structured_output_schema(json_object, system_msg="default"):
     generated_schema = generated_schema[0].function.arguments
 
     output_json = json.loads(generated_schema)
-    save_json_file(output_json, "schema_output.json")
+    #save_json_file(output_json, "schema_output.json")
 
     return generated_schema
 
@@ -287,7 +292,7 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
         return e
 
     output_json = json.loads(structured_output)
-    save_json_file(output_json, "latest_structured_outout.json")
+    #save_json_file(output_json, "latest_structured_outout.json")
     return output_json
 
 
