@@ -42,7 +42,7 @@ def save_json_file(data, file_name):
     print(f"File saved to: {file_path}")
 
 
-async def legacy_structured_output(prompt, schema, system_msg="default", debug):
+async def legacy_structured_output(prompt, schema, system_msg="default"):
 
     if (system_msg == "default"):
         system_message = "Supply the function variables for the given function according to the instruction."
@@ -74,7 +74,7 @@ async def legacy_structured_output(prompt, schema, system_msg="default", debug):
     return legacy_structured_output
 
 
-async def generate_legacy_structured_output_schema(json_object, system_msg="default", debug=False):
+async def generate_legacy_structured_output_schema(json_object, system_msg="default"):
 
     transforn_prompt = "Transform this JSON object: " + str(json_object)
     SchemaGenerator = Generate()
@@ -141,9 +141,9 @@ async def generate_legacy_structured_output_schema(json_object, system_msg="defa
     generated_schema = generated_schema[0].function.arguments
     output_json = json.loads(generated_schema)
 
-    if debug:
-        #save_json_file(output_json, "schema_output.json")
-        pass
+    # if debug:
+    #     #save_json_file(output_json, "schema_output.json")
+    #     pass
 
     return generated_schema
 
