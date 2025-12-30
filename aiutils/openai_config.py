@@ -564,7 +564,7 @@ class Generate(GPTModule):
     def call_function(self, function_response, available_functions):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
-    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_5_2, reasoning_effort="default"):
+    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_5_2, reasoning_effort="default", assistance_response=None, debug=False):
         if cclient.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
@@ -572,8 +572,6 @@ class Generate(GPTModule):
                 self.model = TextModels.gemini_25_flash
         else:
             self.model = model
-
-
 
         if self.model in reasoning_models:
             self.temperature = 1
@@ -590,10 +588,11 @@ class Generate(GPTModule):
         else:
             self.temperature = 0 
 
+        if assistance_response is not None:
+            self.messages.append({"role": "assistant", "content": assistance_response})
+        else:
+            self.messages.append({"role": "system", "content": system_message})
 
-
-
-        self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
         if (input_type == 'json'):
@@ -619,7 +618,8 @@ class Generate(GPTModule):
             self.request_body = make_req_body(self)
             response = await ChatBody(self.request_body, input_type)
 
-        pprint.pprint(response)
+        if debug == True:
+            pprint.pprint(response)
         return response.choices[0].message.content
 
 

@@ -22,6 +22,13 @@ def truncate_to_token_limit(text, model):
     return truncated_text
 
 
+
+
+def get_token_count(text):
+    encoding = tiktoken.encoding_for_model(encoding_name)
+    return len(encoding.encode(text))
+
+
 async def get_embedding(text, model='large', dimensions=3072, encoding_format="float") -> List[float]:
     """
     Response object:
