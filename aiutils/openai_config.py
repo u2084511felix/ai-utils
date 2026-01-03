@@ -501,7 +501,16 @@ class Generate(GPTModule):
         except Exception as e:
             return e
 
-    async def generate(self, system_message, prompt, model=TextModels.gpt_5_2, temperature=0, chat=True, reasoning_effort="default"):
+    async def generate(
+            self, 
+            system_message, 
+            prompt,
+            model=TextModels.gpt_5_2, 
+            temperature=0, 
+            chat=True, 
+            reasoning_effort="default"
+        ) -> str:
+        """Returns a semantic LLM response string"""
         if cclient.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
@@ -564,7 +573,19 @@ class Generate(GPTModule):
     def call_function(self, function_response, available_functions):
         return send_functioncall_args_to_available_functions(function_response, available_functions)
 
-    async def structured_output(self, system_message, prompt, schema={}, input_type="json", module_name='', model=TextModels.gpt_5_2, reasoning_effort="default", assistance_response=None, debug=False):
+    async def structured_output(
+        self, 
+        system_message, 
+        prompt, 
+        schema={}, 
+        input_type="json", 
+        module_name='', 
+        model=TextModels.gpt_5_2, 
+        reasoning_effort="default", 
+        assistance_response=None, 
+        debug=False
+    ) -> str:
+        """Returns a JSON string."""
         if cclient.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
