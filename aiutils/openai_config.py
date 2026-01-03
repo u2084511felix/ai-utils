@@ -619,6 +619,8 @@ class Generate(GPTModule):
             response = await ChatBody(self.request_body, input_type)
 
         if debug == True:
+            if assistance_response is not None:
+                print("Running stateful structured output with previous assistant response in context.")
             pprint.pprint(response)
         return response.choices[0].message.content
 
