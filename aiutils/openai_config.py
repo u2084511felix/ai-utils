@@ -364,6 +364,7 @@ def apply_patch(path, diff):
 
 def create_file(path: str, diff: str):
     file_path = Path(path)
+    os.makedirs(file_path, exist_ok=True)
     new = apply_v4a_diff_text("", diff, mode="create")
     file_path.write_text(new, encoding="utf-8")
     print(f"Created file: {path}")
@@ -439,9 +440,6 @@ class Generate(GPTModule):
                 else:
                     print(f"Unknown diff operation type: {diff_type}")
 
-
-
-
     def undo_last_diffs(self):
         last_diffs = load_last_diffs()
         diff_paths = []
@@ -459,8 +457,6 @@ class Generate(GPTModule):
                 os.remove(diff_path)
         except Exception as e:
             print(f"Error while undoing diff: {e}")
-
-
 
     async def web_search(self, tool_dict=None, **kwargs) -> str:
         """
@@ -643,8 +639,12 @@ class Generate(GPTModule):
             if assistance_response is not None:
                 print("Running stateful structured output with previous assistant response in context.")
             pprint.pprint(response)
-        return response.choices[0].message.content
-
+        
+        if hasattr(response, "choices"):
+            return response.choices[0].message.content
+        
+        else:
+            return response
 
 """
 Audio Models
@@ -657,7 +657,6 @@ class SpeechMode(str, Enum):
     high_quality = "high_quality"   # gpt-4o-transcribe + gpt-4o-mini-tts
     fast = "fast"                   # gpt-4o-mini-transcribe + gpt-4o-mini-tts
     legacy = "legacy"               # whisper-1 + tts-1
-
 
 @dataclass
 class SpeechIO:
@@ -745,7 +744,6 @@ class SpeechIO:
         except Exception:
             return str(audio_resp).encode("utf-8")
 
-
 def create_generator_module(**kwargs):
     """
     args: (**kwargs)
@@ -762,19 +760,17 @@ def create_generator_module(**kwargs):
 
     return module
 
-
 async def ChatBody(params, input_type='json'):
     try:
         if (input_type == 'json'):
             response = cclient.client.chat.completions.create(**params)
 
         elif (input_type == 'pydantic'):
-            response = cclient.client.beta.chat.completions.parse(**params)
+            response = cclient.client.chat.completions.parse(**params)
 
         return response
     except Exception as e:
-        print(e)
-
+        return e
 
 async def Chat(params: GPT_Module_Params):
 
@@ -790,8 +786,7 @@ async def Chat(params: GPT_Module_Params):
             return (response_text)
 
     except Exception as e:
-        print(e)
-
+        return e
 
 async def ResponsesCall(**kwargs):
     try:
@@ -800,7 +795,6 @@ async def ResponsesCall(**kwargs):
         return response.output_text
     except Exception as e:
         return e
-
 
 def send_functioncall_args_to_available_functions(response, available_functions):
 
