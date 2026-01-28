@@ -364,7 +364,7 @@ def apply_patch(path, diff):
 
 def create_file(path: str, diff: str):
     file_path = Path(path)
-    os.makedirs(file_path, exist_ok=True)
+    os.makedirs(file_path.parent, exist_ok=True)
     new = apply_v4a_diff_text("", diff, mode="create")
     file_path.write_text(new, encoding="utf-8")
     print(f"Created file: {path}")
