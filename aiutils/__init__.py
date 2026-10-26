@@ -1,38 +1,51 @@
-from openai import OpenAI
+from enum import StrEnum
+
+from openai import OpenAI, AsyncOpenAI
 import os
 #from google import genai
+
 
 google_client  = OpenAI(
     api_key=os.getenv("GEMINI_API_KEY"),
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 
-# response = client.models.generate_content(
-#     model="gemini-2.5-flash", contents="Explain how AI works in a few words"
-# )
-# print(response.text)
-
-
 brave_client = OpenAI(
     api_key=os.getenv("BRAVE_API_KEY"),
     base_url="https://api.search.brave.com/res/v1",
 )
 
-
 # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(
+openai_client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+async_openai_client = AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
 
 encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
 # tokenizer = tiktoken.get_encoding(encoding)
 
-pedantic_resoning = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gemini_25_pro",  "gemini-3-pro-preview"]
+pedantic_reasoning = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gemini_25_pro",  "gemini-3-pro-preview"]
 reasoning_models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "o3", "o3-pro", "o1", "o1-preview", "o1-mini", "o3-mini", "o4-mini", "gpt-5.1", "gpt-5.2"]
 instruct_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini", "gpt-4.5-preview", "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14"]
 
-class TextModels:
 
+class Vendor(StrEnum):
+    OPENAI = "openai"
+    GOOGLE = "google"
+    BRAVE = "brave"
+
+
+class GoogleModels:
+    gemini_3_pro = "gemini-3-pro-preview"
+    gemini_25_flash = "gemini-2.5-flash"
+    gemini_25_pro = "gemini-2.5-pro"
+    gemini_25_flash_lite = "gemini-2.5-flash-lite"
+
+
+class OpenAIModels:
     #Reasoning token models:
     o3 = "o3"
     o3_pro = "o3-pro"
@@ -62,13 +75,8 @@ class TextModels:
     gpt_4_1_nano = "gpt-4.1-nano-2025-04-14"
 
 
-    #Google models:
-    gemini_3_pro = "gemini-3-pro-preview"
-    gemini_25_flash = "gemini-2.5-flash"
-    gemini_25_pro = "gemini-2.5-pro"
-    gemini_25_flash_lite = "gemini-2.5-flash-lite"
 
-    # Legacy model names (phaseing out of all projects)
+class LegacyModels:
     smarter = "gpt-4.1"
     o4mini = "o4-mini"
     latest = "gpt-4o"
@@ -91,7 +99,11 @@ class TextModels:
     nano41 = "gpt-4.1-nano"
 
 
-class EmbeddingModels:
+class TextModels(GoogleModels, OpenAIModels, LegacyModels):
+    pass
+
+
+class EmbeddingModels(StrEnum):
     """
     cost = tokens per dollar
 

@@ -6,31 +6,41 @@ from dataclasses import dataclass, field
 import pprint
 from typing import Literal, Optional, List, Dict, Any
 from enum import Enum
+import importlib
+from importlib import reload
 import pdb
 import subprocess
 from tempfile import NamedTemporaryFile
-#!/usr/bin/env python3
+
 
 import sys
 from pathlib import Path, PurePosixPath
 import posixpath
 from difflib import SequenceMatcher
 
+
 from aiutils import (
-    client,
+    openai_client,
+    async_openai_client,
     encoding,
     TextModels,
     EmbeddingModels,
     Models,
     reasoning_models,
-    pedantic_resoning,
+    pedantic_reasoning,
     brave_client,
     google_client,
-    AudioModels
+    AudioModels,
+    Vendor
 )
 
-import importlib
-from importlib import reload
+
+class V4APatchError(RuntimeError):
+    pass
+
+
+ApplyV4AMode = Literal["default", "create"]
+
 
 def _norm(p: str) -> str:
     return posixpath.normpath(p)
@@ -74,20 +84,34 @@ def closest_path_stdlib(query: str, choices: list[str]) -> str | None:
 
 
 class Client:
-    def __init__(self):
+
+    def __init__(
+        self,
+        vendor: str = "openai",
+        client=openai_client,
+        async_client=async_openai_client,
+    ):
         self.client = client
-        self.vendor = "openai"
+        self.async_client = async_client
+        self.vendor = Vendor(vendor.lower())
 
     def set_vendor(self, vendor):
-        if vendor == "openai":
-            self.client = client
-            self.vendor = "openai"
-        elif vendor == "google":
-            self.client = google_client
-            self.vendor = "google"
-        elif vendor == "brave":
-            self.client = brave_client
-            self.vendor = "brave"
+        vendor = Vendor(vendor.lower())
+        match vendor:
+            case Vendor.OPENAI:
+                self.client = openai_client
+                self.async_client = async_openai_client
+                self.vendor = Vendor.OPENAI
+            case Vendor.GOOGLE:
+                self.client = google_client
+                # TODO
+                self.async_client = async_openai_client
+                self.vendor = Vendor.GOOGLE
+            case Vendor.BRAVE:
+                self.client = brave_client
+                # TODO
+                self.async_client = async_openai_client
+                self.vendor = Vendor.BRAVE
 
 
 cclient = Client()
@@ -104,7 +128,7 @@ class UserLocation(BaseModel):
     country: str
     city: str
     region: str
-    timzeone: Optional[str] = None
+    timezone: Optional[str] = None
 
 
 """
@@ -185,10 +209,6 @@ def make_req_body(module: GPTModule):
     return request_body
 
 
-
-
-
-
 def _detect_newline_style(text: str) -> str:
     if "\r\n" in text:
         return "\r\n"
@@ -210,11 +230,6 @@ def _find_subsequence(haystack: list[str], needle: list[str], start: int) -> int
             return i
     return -1
 
-
-class V4APatchError(RuntimeError):
-    pass
-
-ApplyV4AMode = Literal["default", "create"]
 
 def apply_v4a_diff_text(input_text: str, diff: str, mode: ApplyV4AMode = "default") -> str:
     """
@@ -311,9 +326,6 @@ def apply_v4a_diff_text(input_text: str, diff: str, mode: ApplyV4AMode = "defaul
     return result
 
 
-
-
-
 def invert_v4a_diff(diff: str) -> str:
     out = []
     for line in diff.splitlines():
@@ -354,8 +366,6 @@ def save_diff(id, diff):
     with open(diff_path, "w") as f:
         f.write(diff)
 
-
-
 def apply_patch(path, diff):
     file_path = Path(path)
     old = file_path.read_text(encoding="utf-8")
@@ -369,7 +379,6 @@ def create_file(path: str, diff: str):
     file_path.write_text(new, encoding="utf-8")
     print(f"Created file: {path}")
 
-
 def delete_file(path: str):
     file_path = Path(path)
     file_path.unlink()
@@ -378,17 +387,22 @@ def delete_file(path: str):
 
 @dataclass
 class Generate(GPTModule):
-    def __init__(self):
-        self.model = TextModels.gpt_4_1
+    def __init__(
+        self,
+        model=TextModels.gpt_4_1,
+        client=cclient,
+    ):
+        self.model = model
         self.messages = []
         self.temperature = 0
+        self.client = client
 
     async def apply_diff(self, prompt, filepaths, verbose=False):
 
         model = TextModels.gpt_5_2
         tools = [{"type": "apply_patch"}]
 
-        response = cclient.client.responses.create(
+        response = self.client.responses.create(
             model=model,
             input=prompt,
             tools=[{"type": "apply_patch"}],
@@ -472,7 +486,6 @@ class Generate(GPTModule):
         NOTE: search_context_size: "low", "medium", "high"
 
         """
-
         web_search_model = WebSearchResponsesModel(**kwargs)
         clean_model = clean_pydantic_model(web_search_model)
 
@@ -497,17 +510,33 @@ class Generate(GPTModule):
         except Exception as e:
             return e
 
+    def _set_reasoning_effort_and_temperature(self, reasoning_effort, temperature=None): 
+        if self.model in reasoning_models:
+            self.temperature = 1
+            if reasoning_effort == "default":
+                self.reasoning_effort = "none"
+            else:
+                self.reasoning_effort = reasoning_effort
+        elif self.model in pedantic_reasoning:
+            self.temperature = 1
+            if reasoning_effort == "default":
+                self.reasoning_effort = "minimal"
+            else:
+                self.reasoning_effort = reasoning_effort
+        else:
+            self.temperature = temperature or 0
+
     async def generate(
-            self, 
-            system_message, 
-            prompt,
-            model=TextModels.gpt_5_2, 
-            temperature=0, 
-            chat=True, 
-            reasoning_effort="default"
-        ) -> str:
+        self, 
+        system_message, 
+        prompt,
+        model=TextModels.gpt_5_2, 
+        temperature=0, 
+        chat=True, 
+        reasoning_effort="default"
+    ) -> str:
         """Returns a semantic LLM response string"""
-        if cclient.vendor == "google":
+        if self.client.vendor == Vendor.GOOGLE:
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
             else:
@@ -515,44 +544,31 @@ class Generate(GPTModule):
         else:
             self.model = model
 
-
-
-        if self.model in reasoning_models:
-            self.temperature = 1
-            if reasoning_effort == "default":
-                self.reasoning_effort = "none"
-            else:
-                self.reasoning_effort = reasoning_effort
-        elif self.model in pedantic_resoning:
-            self.temperature = 1
-            if reasoning_effort == "default":
-                self.reasoning_effort = "minimal"
-            else:
-                self.reasoning_effort = reasoning_effort
-        else:
-            self.temperature = temperature
-
-
+        self._set_reasoning_effort_and_temperature(reasoning_effort, temperature)
 
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
 
         self.request_body = make_req_body(self)
 
-        if (chat):
-            response = await Chat(self.request_body)
+        if chat:
+            response = await chat_(self.request_body, client=self.client)
             return response
-
         else:
-            response_body = await ChatBody(self.request_body)
+            response_body = await chat_body(self.request_body, client=self.client)
             return response_body
+
 
     async def continued_response(self, assistant_response, prompt):
         self.messages.append({"role": "assistant", "content": assistant_response})
         self.messages.append({"role": "user", "content": prompt})
         self.request_body = make_req_body(self)
 
-        response = await Chat(self.request_body)
+        response = await chat(
+            self.request_body, 
+            client=self.client,
+            use_async=True
+        )
         return response
 
     async def function_call_legacy_structured_output(self, system_message, prompt):
@@ -563,11 +579,11 @@ class Generate(GPTModule):
             self.reasoning_effort = "none"
         self.request_body = make_req_body(self)
 
-        response = await Chat(self.request_body)
+        response = await chat(self.request_body, client=self.client, use_async=True)
         return response
 
     def call_function(self, function_response, available_functions):
-        return send_functioncall_args_to_available_functions(function_response, available_functions)
+        return send_function_call_args_to_available_functions(function_response, available_functions)
 
     async def structured_output(
         self, 
@@ -582,7 +598,7 @@ class Generate(GPTModule):
         debug=False
     ) -> str:
         """Returns a JSON string."""
-        if cclient.vendor == "google":
+        if self.client.vendor == "google":
             if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
                 self.model = model
             else:
@@ -590,20 +606,7 @@ class Generate(GPTModule):
         else:
             self.model = model
 
-        if self.model in reasoning_models:
-            self.temperature = 1
-            if reasoning_effort == "default":
-                self.reasoning_effort = "none"
-            else:
-                self.reasoning_effort = reasoning_effort
-        elif self.model in pedantic_resoning:
-            self.temperature = 1
-            if reasoning_effort == "default":
-                self.reasoning_effort = "minimal"
-            else:
-                self.reasoning_effort = reasoning_effort
-        else:
-            self.temperature = 0 
+        self._set_reasoning_effort_and_temperature(reasoning_effort)
 
         if assistance_response is not None:
             self.messages.append({"role": "assistant", "content": assistance_response})
@@ -612,28 +615,39 @@ class Generate(GPTModule):
 
         self.messages.append({"role": "user", "content": prompt})
 
-        if (input_type == 'json'):
-            schema = json.loads(schema)
-            self.response_format = {
-                "type": "json_schema",
-                "json_schema": schema
-            }
-            self.request_body = make_req_body(self)
-            response = await ChatBody(self.request_body, input_type)
+        match input_type:
+            case 'json':
+                schema = json.loads(schema)
+                self.response_format = {
+                    "type": "json_schema",
+                    "json_schema": schema
+                }
+                self.request_body = make_req_body(self)
+                response = await chat_body(
+                    self.request_body,
+                    input_type=input_type,
+                    client=self.client,
+                    use_async=True
+                )
+            case 'pydantic':
+                if module_name != '':
+                    module = importlib.import_module(module_name)
+                    module = reload(module)
+                    schema_title = schema
+                    model_class = getattr(module, schema_title)
+                    self.response_format = model_class
+                else:
+                    self.response_format = schema
 
-        elif (input_type == 'pydantic'):
-            if (module_name != ''):
-                module = importlib.import_module(module_name)
-                module = reload(module)
-                schema_title = schema
-                model_class = getattr(module, schema_title)
-                self.response_format = model_class
-
-            else:
-                self.response_format = schema
-
-            self.request_body = make_req_body(self)
-            response = await ChatBody(self.request_body, input_type)
+                self.request_body = make_req_body(self)
+                response = await chat_body(
+                    self.request_body,
+                    input_type=input_type,
+                    client=self.client,
+                    use_async=True
+                )
+            case _:
+                raise ValueError(f"Unsupported input_type: {input_type}")
 
         if debug == True:
             if assistance_response is not None:
@@ -666,6 +680,7 @@ class SpeechIO:
 
     stt_model: str = field(init=False)
     tts_model: str = field(init=False)
+    client: Any = cclient.client
 
     def __post_init__(self):
         if self.mode == SpeechMode.fast:
@@ -701,7 +716,7 @@ class SpeechIO:
         except Exception:
             pass
 
-        result = cclient.client.audio.transcriptions.create(**params)
+        result = self.client.audio.transcriptions.create(**params)
 
         if isinstance(result, str):
             return result
@@ -732,7 +747,7 @@ class SpeechIO:
         }
         params.update(kwargs)
 
-        audio_resp = cclient.client.audio.speech.create(**params)
+        audio_resp = self.client.audio.speech.create(**params)
 
         # This is the key: read bytes from the response object
         if hasattr(audio_resp, "read"):
@@ -760,22 +775,35 @@ def create_generator_module(**kwargs):
 
     return module
 
-async def ChatBody(params, input_type='json'):
+async def chat_body(params, client=cclient, input_type='json', use_async=True):
+    response = None
     try:
-        if (input_type == 'json'):
-            response = cclient.client.chat.completions.create(**params)
-
-        elif (input_type == 'pydantic'):
-            response = cclient.client.chat.completions.parse(**params)
+        match input_type:
+            case 'json':
+                if use_async:
+                    response = await client.async_client.chat.completions.create(**params)
+                else:
+                    response = client.chat.completions.create(**params)
+            case 'pydantic':
+                if use_async:
+                    response = await client.async_client.chat.completions.parse(**params)
+                else:
+                    response = client.chat.completions.parse(**params)
+            case _:
+                raise ValueError(f"Unsupported input_type: {input_type}")
 
         return response
     except Exception as e:
         return e
 
-async def Chat(params: GPT_Module_Params):
 
+async def chat_(params, *, client=cclient, use_async=True):
     try:
-        response = cclient.client.chat.completions.create(**params)
+        if use_async:
+            response = await client.async_client.chat.completions.create(**params)
+        else:
+            response = client.chat.completions.create(**params)
+
         response_message = response.choices[0].message
         if response_message.tool_calls:
             print("\n\nfunction call detected.\n\n")
@@ -788,15 +816,18 @@ async def Chat(params: GPT_Module_Params):
     except Exception as e:
         return e
 
-async def ResponsesCall(**kwargs):
-    try:
 
-        response = cclient.client.responses.create(**kwargs)
+async def ResponsesCall(client=cclient, use_async=True, **kwargs):
+    try:
+        if use_async:
+            response = await client.async_client.responses.create(**kwargs)
+        else:
+            response = client.responses.create(**kwargs)
         return response.output_text
     except Exception as e:
         return e
 
-def send_functioncall_args_to_available_functions(response, available_functions):
+def send_function_call_args_to_available_functions(response, available_functions):
 
     return_values = {}
 

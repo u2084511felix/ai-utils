@@ -9,7 +9,7 @@ import inspect
 import sys
 import subprocess
 from datamodel_code_generator import InputFileType, DataModelType, generate
-from aiutils import client
+from aiutils import openai_client
 import pdb
 
 def run_script_action(action):
@@ -464,7 +464,7 @@ async def GeneratePydanticModelStructuredOutput(prompt, schema_object_filepath, 
 
 async def responses_structured_output(model, system_message, prompt, pydantic_model):
 
-    response = client.responses.parse(
+    response = openai_client.responses.parse(
         model=model,
         instructions=system_message,
         input=prompt,
