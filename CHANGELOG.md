@@ -28,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Split tests that compare tuples of unrelated results into separate tests.
+  Each new test checks one result with one assertion.
 - Revise the pytest suite to use public calls, fixture setup, one assertion per
   test, named expected values, and GIVEN/WHEN/THEN test descriptions.
 - Split tests with multiple actions into separate cases. Move prior calls for

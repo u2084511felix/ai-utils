@@ -17,16 +17,25 @@ def vendor_sdk(monkeypatch, key):
 
 
 @pytest.mark.parametrize("factory,key,url", [("make_openai_client", "OPENAI_API_KEY", None), ("make_google_client", "GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai/"), ("make_brave_client", "BRAVE_API_KEY", "https://api.search.brave.com/res/v1")])
-def test_vendor_configuration(vendor_sdk, factory, key, url):
+def test_vendor_factory_returns_client(vendor_sdk, factory, key, url):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the vendor client uses the specified key and service URL."""
+    THEN vendor factory returns client."""
     constructor = vendor_sdk
     result = getattr(clients, factory)()
-    result = result is constructor.return_value
-    actual = (result, constructor.call_args_list)
-    expected = (True, [mock_call(api_key="fake-key", base_url=url)])
-    assert actual == expected
+    expected = constructor.return_value
+    assert result is expected
+
+
+@pytest.mark.parametrize("factory,key,url", [("make_openai_client", "OPENAI_API_KEY", None), ("make_google_client", "GEMINI_API_KEY", "https://generativelanguage.googleapis.com/v1beta/openai/"), ("make_brave_client", "BRAVE_API_KEY", "https://api.search.brave.com/res/v1")])
+def test_vendor_factory_passes_configuration(vendor_sdk, factory, key, url):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN vendor factory passes configuration."""
+    constructor = vendor_sdk
+    getattr(clients, factory)()
+    expected = [mock_call(api_key="fake-key", base_url=url)]
+    assert constructor.call_args_list == expected
 
 
 @pytest.fixture
@@ -87,15 +96,24 @@ def sdk_factory(monkeypatch, sdk_name):
 
 
 @pytest.mark.parametrize("factory,sdk_name", [("make_openai_client", "OpenAI"), ("make_async_openai_client", "AsyncOpenAI"), ("make_google_client", "OpenAI"), ("make_brave_client", "OpenAI")])
-def test_client_factories_use_sdk_constructor(sdk_factory, factory, sdk_name):
+def test_sdk_factory_returns_client(sdk_factory, factory, sdk_name):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the result is the SDK client with the configured key."""
+    THEN sdk factory returns client."""
     constructor = sdk_factory
-    result = getattr(clients, factory)() is constructor.return_value
-    actual = (result, constructor.call_args.kwargs["api_key"])
-    expected = (True, "pytest-not-a-real-key")
-    assert actual == expected
+    expected = constructor.return_value
+    assert getattr(clients, factory)() is expected
+
+
+@pytest.mark.parametrize("factory,sdk_name", [("make_openai_client", "OpenAI"), ("make_async_openai_client", "AsyncOpenAI"), ("make_google_client", "OpenAI"), ("make_brave_client", "OpenAI")])
+def test_sdk_factory_passes_key(sdk_factory, factory, sdk_name):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN sdk factory passes key."""
+    constructor = sdk_factory
+    getattr(clients, factory)()
+    expected = "pytest-not-a-real-key"
+    assert constructor.call_args.kwargs["api_key"] == expected
 
 
 @pytest.fixture
@@ -114,13 +132,49 @@ def test_reply_defaults_are_independent(changed_reply):
     assert reply.usage.input_tokens == expected
 
 
-def test_chat_text_and_usage(client):
+def test_chat_reply_retains_text(client):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the reply contains the provider text and token counts."""
+    THEN chat reply retains text."""
     reply = client.chat_completions({})
-    expected = ("hello", None, 10, 5, 2)
-    assert (reply.content, reply.error, reply.usage.input_tokens, reply.usage.output_tokens, reply.usage.reasoning_tokens) == expected
+    expected = "hello"
+    assert reply.content == expected
+
+
+def test_chat_reply_has_no_error(client):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN chat reply has no error."""
+    reply = client.chat_completions({})
+    expected = None
+    assert reply.error == expected
+
+
+def test_chat_reply_counts_input(client):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN chat reply counts input."""
+    reply = client.chat_completions({})
+    expected = 10
+    assert reply.usage.input_tokens == expected
+
+
+def test_chat_reply_counts_output(client):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN chat reply counts output."""
+    reply = client.chat_completions({})
+    expected = 5
+    assert reply.usage.output_tokens == expected
+
+
+def test_chat_reply_counts_reasoning(client):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN chat reply counts reasoning."""
+    reply = client.chat_completions({})
+    expected = 2
+    assert reply.usage.reasoning_tokens == expected
 
 
 @pytest.fixture
@@ -146,16 +200,25 @@ def missing_content(client, response_factory):
     return client
 
 
-def test_missing_content_is_error(missing_content):
+def test_missing_content_returns_error(missing_content):
     """GIVEN a provider response with no content.
     WHEN the client operation is called.
-    THEN the reply reports that content is absent."""
+    THEN missing content returns error."""
     client = missing_content
     reply = client.chat_completions({})
     result = isinstance(reply.error, RuntimeError)
-    actual = (result, "no content" in str(reply.error))
-    expected = (True, True)
-    assert actual == expected
+    expected = True
+    assert result == expected
+
+
+def test_missing_content_explains_error(missing_content):
+    """GIVEN a provider response with no content.
+    WHEN the client operation is called.
+    THEN missing content explains error."""
+    client = missing_content
+    reply = client.chat_completions({})
+    expected = "no content"
+    assert expected in str(reply.error)
 
 
 @pytest.fixture
@@ -240,51 +303,88 @@ def chat_params(client):
 
 
 @pytest.mark.parametrize("method,operation", [("chat_completions", "create"), ("chat_completions_body", "create")])
-def test_sync_chat_forwards_parameters(chat_params, method, operation):
+def test_sync_chat_passes_parameters(chat_params, method, operation):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the provider receives the specified parameters and the reply contains text."""
+    THEN sync chat passes parameters."""
+    params, client = chat_params
+    getattr(client, method)(params)
+    result = getattr(client.client.chat.completions, operation).call_args_list
+    expected = [mock_call(**params)]
+    assert result == expected
+
+
+@pytest.mark.parametrize("method,operation", [("chat_completions", "create"), ("chat_completions_body", "create")])
+def test_sync_chat_returns_text(chat_params, method, operation):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN sync chat returns text."""
     params, client = chat_params
     reply = getattr(client, method)(params)
-    result = getattr(client.client.chat.completions, operation).call_args_list
-    actual = (result, reply.content)
-    expected = ([mock_call(**params)], "hello")
-    assert actual == expected
+    expected = "hello"
+    assert reply.content == expected
 
 
 @pytest.mark.parametrize("input_type,operation", [(InputType.JSON, "create"), (InputType.PYDANTIC, "parse")])
-def test_sync_body_dispatch(client, input_type, operation):
+def test_sync_body_has_no_error(client, input_type, operation):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the selected endpoint receives the request."""
-    result = client.chat_completions_body({"model": "gpt-4o"}, input_type=input_type).error is None
-    actual = (result, getattr(client.client.chat.completions, operation).call_args_list)
-    expected = (True, [mock_call(model="gpt-4o")])
-    assert actual == expected
+    THEN sync body has no error."""
+    expected = None
+    assert client.chat_completions_body({"model": "gpt-4o"}, input_type=input_type).error is expected
+
+
+@pytest.mark.parametrize("input_type,operation", [(InputType.JSON, "create"), (InputType.PYDANTIC, "parse")])
+def test_sync_body_selects_endpoint(client, input_type, operation):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN sync body selects endpoint."""
+    client.chat_completions_body({"model": "gpt-4o"}, input_type=input_type)
+    expected = [mock_call(model="gpt-4o")]
+    assert getattr(client.client.chat.completions, operation).call_args_list == expected
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("input_type,operation", [("json", "create"), ("pydantic", "parse")])
-async def test_async_body_dispatch(client, input_type, operation):
+async def test_async_body_selects_endpoint(client, input_type, operation):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the selected endpoint receives the request and the reply contains text."""
-    reply = await client.async_chat_completions_body({"model": "gpt-4o"}, input_type=input_type)
+    THEN async body selects endpoint."""
+    await client.async_chat_completions_body({"model": "gpt-4o"}, input_type=input_type)
     result = getattr(client.async_client.chat.completions, operation).await_args_list
-    actual = (result, reply.content)
-    expected = ([mock_call(model="gpt-4o")], "hello")
-    assert actual == expected
+    expected = [mock_call(model="gpt-4o")]
+    assert result == expected
 
 
 @pytest.mark.asyncio
-async def test_async_chat(client):
+@pytest.mark.parametrize("input_type,operation", [("json", "create"), ("pydantic", "parse")])
+async def test_async_body_returns_text(client, input_type, operation):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the provider receives the request and the reply contains text."""
+    THEN async body returns text."""
+    reply = await client.async_chat_completions_body({"model": "gpt-4o"}, input_type=input_type)
+    expected = "hello"
+    assert reply.content == expected
+
+
+@pytest.mark.asyncio
+async def test_async_chat_passes_parameters(client):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN async chat passes parameters."""
+    await client.async_chat_completions({"model": "gpt-4o"})
+    expected = [mock_call(model="gpt-4o")]
+    assert client.async_client.chat.completions.create.await_args_list == expected
+
+
+@pytest.mark.asyncio
+async def test_async_chat_returns_text(client):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN async chat returns text."""
     reply = await client.async_chat_completions({"model": "gpt-4o"})
-    actual = (client.async_client.chat.completions.create.await_args_list, reply.content)
-    expected = ([mock_call(model="gpt-4o")], "hello")
-    assert actual == expected
+    expected = "hello"
+    assert reply.content == expected
 
 
 @pytest.fixture
@@ -324,25 +424,42 @@ async def test_async_provider_exceptions_are_returned_in_replies(async_failure, 
     assert result == expected
 
 
-def test_sync_invalid_input_type_does_not_call_provider(client):
+def test_invalid_sync_body_returns_error(client):
     """GIVEN an invalid input type.
     WHEN the client operation is called.
-    THEN the input type is rejected before a provider request."""
+    THEN invalid sync body returns error."""
     result = isinstance(client.chat_completions_body({}, input_type="bad").error, ValueError)
-    actual = (result, client.client.chat.completions.create.call_args_list)
-    expected = (True, [])
-    assert actual == expected
+    expected = True
+    assert result == expected
+
+
+def test_invalid_sync_body_avoids_provider(client):
+    """GIVEN an invalid input type.
+    WHEN the client operation is called.
+    THEN invalid sync body avoids provider."""
+    isinstance(client.chat_completions_body({}, input_type="bad").error, ValueError)
+    expected = []
+    assert client.client.chat.completions.create.call_args_list == expected
 
 
 @pytest.mark.asyncio
-async def test_async_invalid_input_type_does_not_call_provider(client):
+async def test_invalid_async_body_returns_error(client):
     """GIVEN an invalid input type.
     WHEN the client operation is called.
-    THEN the input type is rejected before a provider request."""
+    THEN invalid async body returns error."""
     result = isinstance((await client.async_chat_completions_body({}, input_type="bad")).error, ValueError)
-    actual = (result, client.async_client.chat.completions.create.await_args_list)
-    expected = (True, [])
-    assert actual == expected
+    expected = True
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_invalid_async_body_avoids_provider(client):
+    """GIVEN an invalid input type.
+    WHEN the client operation is called.
+    THEN invalid async body avoids provider."""
+    isinstance((await client.async_chat_completions_body({}, input_type="bad")).error, ValueError)
+    expected = []
+    assert client.async_client.chat.completions.create.await_args_list == expected
 
 
 @pytest.fixture
@@ -352,15 +469,25 @@ def embedding_params(client):
 
 
 @pytest.mark.asyncio
-async def test_embedding_response(embedding_params):
+async def test_client_embedding_returns_vector(embedding_params):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the provider receives the specified parameters and the result contains the embedding."""
+    THEN client embedding returns vector."""
     params, client = embedding_params
     result = await client.make_embeddings(**params)
-    actual = (result, client.async_client.embeddings.create.await_args_list)
-    expected = ([0.1, 0.2], [mock_call(**params)])
-    assert actual == expected
+    expected = [0.1, 0.2]
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_client_embedding_passes_parameters(embedding_params):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN client embedding passes parameters."""
+    params, client = embedding_params
+    await client.make_embeddings(**params)
+    expected = [mock_call(**params)]
+    assert client.async_client.embeddings.create.await_args_list == expected
 
 
 @pytest.fixture
@@ -382,14 +509,33 @@ async def test_embedding_error(failed_embedding):
 
 
 @pytest.mark.parametrize("vendor", ["OPENAI", "google", "brave"])
-def test_make_client_accepts_explicit_clients(client, vendor):
+def test_client_factory_normalizes_vendor(client, vendor):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the client retains the supplied SDK clients and normalizes the vendor name."""
+    THEN client factory normalizes vendor."""
     result = clients.make_client(vendor, client=client.client, async_client=client.async_client)
-    actual = (result.vendor, result.client is client.client, result.async_client is client.async_client)
-    expected = (vendor.lower(), True, True)
-    assert actual == expected
+    expected = vendor.lower()
+    assert result.vendor == expected
+
+
+@pytest.mark.parametrize("vendor", ["OPENAI", "google", "brave"])
+def test_client_factory_retains_sync_client(client, vendor):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN client factory retains sync client."""
+    result = clients.make_client(vendor, client=client.client, async_client=client.async_client)
+    expected = client.client
+    assert result.client is expected
+
+
+@pytest.mark.parametrize("vendor", ["OPENAI", "google", "brave"])
+def test_client_factory_retains_async_client(client, vendor):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN client factory retains async client."""
+    result = clients.make_client(vendor, client=client.client, async_client=client.async_client)
+    expected = client.async_client
+    assert result.async_client is expected
 
 
 @pytest.fixture
@@ -401,15 +547,36 @@ def vendor_clients(monkeypatch, client, factory):
 
 
 @pytest.mark.parametrize("vendor,factory", [("openai", "make_openai_client"), ("google", "make_google_client"), ("brave", "make_brave_client")])
-def test_set_vendor_switches_clients(vendor_clients, vendor, factory):
+def test_vendor_change_sets_vendor(vendor_clients, vendor, factory):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the vendor and both SDK clients change."""
+    THEN vendor change sets vendor."""
     asynchronous, sync, client = vendor_clients
     client.set_vendor(vendor.upper())
-    actual = (client.vendor, client.client is sync, client.async_client is asynchronous)
-    expected = (vendor, True, True)
-    assert actual == expected
+    expected = vendor
+    assert client.vendor == expected
+
+
+@pytest.mark.parametrize("vendor,factory", [("openai", "make_openai_client"), ("google", "make_google_client"), ("brave", "make_brave_client")])
+def test_vendor_change_replaces_sync_client(vendor_clients, vendor, factory):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN vendor change replaces sync client."""
+    asynchronous, sync, client = vendor_clients
+    client.set_vendor(vendor.upper())
+    expected = sync
+    assert client.client is expected
+
+
+@pytest.mark.parametrize("vendor,factory", [("openai", "make_openai_client"), ("google", "make_google_client"), ("brave", "make_brave_client")])
+def test_vendor_change_replaces_async_client(vendor_clients, vendor, factory):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN vendor change replaces async client."""
+    asynchronous, sync, client = vendor_clients
+    client.set_vendor(vendor.upper())
+    expected = asynchronous
+    assert client.async_client is expected
 
 
 @pytest.fixture
@@ -471,15 +638,24 @@ def sync_logger(client):
 
 
 @pytest.mark.parametrize("method", ["chat_completions", "chat_completions_body"])
-def test_sync_chat_verbose_logs_provider_response(sync_logger, method):
+def test_verbose_sync_chat_has_no_error(sync_logger, method):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the response is logged and returned without an error."""
+    THEN verbose sync chat has no error."""
     response, client = sync_logger
-    result = getattr(client, method)({}, verbose=True).error is None
-    actual = (result, client.logger.debug.call_args_list)
-    expected = (True, [mock_call(response)])
-    assert actual == expected
+    expected = None
+    assert getattr(client, method)({}, verbose=True).error is expected
+
+
+@pytest.mark.parametrize("method", ["chat_completions", "chat_completions_body"])
+def test_verbose_sync_chat_logs_response(sync_logger, method):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN verbose sync chat logs response."""
+    response, client = sync_logger
+    getattr(client, method)({}, verbose=True)
+    expected = [mock_call(response)]
+    assert client.logger.debug.call_args_list == expected
 
 
 @pytest.fixture
@@ -491,15 +667,25 @@ def async_logger(client):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("method", ["async_chat_completions", "async_chat_completions_body"])
-async def test_async_chat_verbose_logs_provider_response(async_logger, method):
+async def test_verbose_async_chat_has_no_error(async_logger, method):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the response is logged and returned without an error."""
+    THEN verbose async chat has no error."""
     response, client = async_logger
-    result = (await getattr(client, method)({}, verbose=True)).error is None
-    actual = (result, client.logger.debug.call_args_list)
-    expected = (True, [mock_call(response)])
-    assert actual == expected
+    expected = None
+    assert (await getattr(client, method)({}, verbose=True)).error is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["async_chat_completions", "async_chat_completions_body"])
+async def test_verbose_async_chat_logs_response(async_logger, method):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN verbose async chat logs response."""
+    response, client = async_logger
+    await getattr(client, method)({}, verbose=True)
+    expected = [mock_call(response)]
+    assert client.logger.debug.call_args_list == expected
 
 
 @pytest.fixture
@@ -515,15 +701,38 @@ def response_logger(client, response_factory, asynchronous):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("asynchronous", [False, True])
-async def test_responses_forwards_options_and_logs_dump(response_logger, asynchronous):
+async def test_responses_pass_options(response_logger, asynchronous):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the request retains its options and the response is logged."""
+    THEN responses pass options."""
     create, client = response_logger
     reply = await client.async_responses_create("question", model="test", temperature=0.2, verbose=True) if asynchronous else client.responses_create("question", model="test", temperature=0.2, verbose=True)
-    actual = (create.call_args_list, reply.content, client.logger.debug.call_args_list)
-    expected = ([mock_call(input="question", model="test", temperature=0.2)], "hello", [mock_call({"id": "response-id"})])
-    assert actual == expected
+    expected = [mock_call(input="question", model="test", temperature=0.2)]
+    assert create.call_args_list == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_return_text(response_logger, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses return text."""
+    create, client = response_logger
+    reply = await client.async_responses_create("question", model="test", temperature=0.2, verbose=True) if asynchronous else client.responses_create("question", model="test", temperature=0.2, verbose=True)
+    expected = "hello"
+    assert reply.content == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_log_output(response_logger, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses log output."""
+    create, client = response_logger
+    reply = await client.async_responses_create("question", model="test", temperature=0.2, verbose=True) if asynchronous else client.responses_create("question", model="test", temperature=0.2, verbose=True)
+    expected = [mock_call({"id": "response-id"})]
+    assert client.logger.debug.call_args_list == expected
 
 
 @pytest.fixture
@@ -572,16 +781,26 @@ def original_clients(client):
     return (original_async, original_sync, client)
 
 
-def test_invalid_vendor_does_not_replace_clients(original_clients):
+def test_invalid_vendor_retains_sync_client(original_clients):
     """GIVEN a configured client and an unknown vendor.
     WHEN the client operation is called.
-    THEN the vendor is rejected and both clients are retained."""
+    THEN invalid vendor retains sync client."""
     original_async, original_sync, client = original_clients
     with pytest.raises(ValueError):
         client.set_vendor("unknown")
-    actual = (client.client is original_sync, client.async_client is original_async)
-    expected = (True, True)
-    assert actual == expected
+    expected = original_sync
+    assert client.client is expected
+
+
+def test_invalid_vendor_retains_async_client(original_clients):
+    """GIVEN a configured client and an unknown vendor.
+    WHEN the client operation is called.
+    THEN invalid vendor retains async client."""
+    original_async, original_sync, client = original_clients
+    with pytest.raises(ValueError):
+        client.set_vendor("unknown")
+    expected = original_async
+    assert client.async_client is expected
 
 
 @pytest.fixture
@@ -614,25 +833,107 @@ def patch_response(client, asynchronous):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("asynchronous", [False, True])
-async def test_responses_preserves_output_usage_and_accepts_input(patch_response, asynchronous):
+async def test_responses_pass_input(patch_response, asynchronous):
     """GIVEN a client and a provider response.
     WHEN the client operation is called.
-    THEN the reply retains the provider output and token counts."""
+    THEN responses pass input."""
     operation, response, sdk, tools, client = patch_response
     reply = await client.async_responses_create(input="edit", model="test", tools=tools) if asynchronous else client.responses_create(input="edit", model="test", tools=tools)
-    actual = (sdk.responses.create.call_args_list, reply.error is None, reply.response is response, reply.response.output, reply.usage.input_tokens, reply.usage.output_tokens, reply.usage.reasoning_tokens)
-    expected = ([mock_call(input="edit", model="test", tools=tools)], True, True, [operation], 10, 5, 3)
-    assert actual == expected
+    expected = [mock_call(input="edit", model="test", tools=tools)]
+    assert sdk.responses.create.call_args_list == expected
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("asynchronous", [False, True])
-async def test_responses_rejects_ambiguous_input(client, asynchronous):
+async def test_responses_have_no_error(patch_response, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses have no error."""
+    operation, response, sdk, tools, client = patch_response
+    reply = await client.async_responses_create(input="edit", model="test", tools=tools) if asynchronous else client.responses_create(input="edit", model="test", tools=tools)
+    expected = None
+    assert reply.error is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_retain_provider_reply(patch_response, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses retain provider reply."""
+    operation, response, sdk, tools, client = patch_response
+    reply = await client.async_responses_create(input="edit", model="test", tools=tools) if asynchronous else client.responses_create(input="edit", model="test", tools=tools)
+    expected = response
+    assert reply.response is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_retain_operations(patch_response, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses retain operations."""
+    operation, response, sdk, tools, client = patch_response
+    reply = await client.async_responses_create(input="edit", model="test", tools=tools) if asynchronous else client.responses_create(input="edit", model="test", tools=tools)
+    expected = [operation]
+    assert reply.response.output == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_count_input(patch_response, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses count input."""
+    operation, response, sdk, tools, client = patch_response
+    reply = await client.async_responses_create(input="edit", model="test", tools=tools) if asynchronous else client.responses_create(input="edit", model="test", tools=tools)
+    expected = 10
+    assert reply.usage.input_tokens == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_count_output(patch_response, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses count output."""
+    operation, response, sdk, tools, client = patch_response
+    reply = await client.async_responses_create(input="edit", model="test", tools=tools) if asynchronous else client.responses_create(input="edit", model="test", tools=tools)
+    expected = 5
+    assert reply.usage.output_tokens == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_count_reasoning(patch_response, asynchronous):
+    """GIVEN a client and a provider response.
+    WHEN the client operation is called.
+    THEN responses count reasoning."""
+    operation, response, sdk, tools, client = patch_response
+    reply = await client.async_responses_create(input="edit", model="test", tools=tools) if asynchronous else client.responses_create(input="edit", model="test", tools=tools)
+    expected = 3
+    assert reply.usage.reasoning_tokens == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_ambiguous_input_avoids_sync_provider(client, asynchronous):
     """GIVEN both prompt and input values.
     WHEN the client operation is called.
-    THEN the two input values are rejected before a provider request."""
+    THEN ambiguous input avoids sync provider."""
     with pytest.raises(TypeError, match="either prompt or input"):
         reply = await client.async_responses_create("first", input="second", model="test") if asynchronous else client.responses_create("first", input="second", model="test")
-    actual = (client.client.responses.create.call_args_list, client.async_client.responses.create.call_args_list)
-    expected = ([], [])
-    assert actual == expected
+    expected = []
+    assert client.client.responses.create.call_args_list == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_ambiguous_input_avoids_async_provider(client, asynchronous):
+    """GIVEN both prompt and input values.
+    WHEN the client operation is called.
+    THEN ambiguous input avoids async provider."""
+    with pytest.raises(TypeError, match="either prompt or input"):
+        reply = await client.async_responses_create("first", input="second", model="test") if asynchronous else client.responses_create("first", input="second", model="test")
+    expected = []
+    assert client.async_client.responses.create.call_args_list == expected

@@ -35,15 +35,26 @@ def embedding_request(encoding):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model,requested,expected", [(EmbeddingModels.LARGE, 3072, 3072), (EmbeddingModels.SMALL, 3072, 1536), (EmbeddingModels.LEGACY, 3072, 1536), (EmbeddingModels.SMALL, 256, 256)])
-async def test_embedding_dimensions_and_parameters(embedding_request, model, requested, expected):
+async def test_embedding_returns_vector(embedding_request, model, requested, expected):
     """GIVEN text and a model.
     WHEN the text operation is called.
-    THEN the request uses the model limit and returns the embedding."""
+    THEN embedding returns vector."""
     client = embedding_request
     result = await embeddings.get_embedding("text", client=client, model=model.upper(), dimensions=requested)
-    actual = (result, client.make_embeddings.await_args_list)
-    expected = ([0.1, -0.2], [mock_call(input="text", model=model, encoding_format="float", dimensions=expected)])
-    assert actual == expected
+    expected = [0.1, -0.2]
+    assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model,requested,expected", [(EmbeddingModels.LARGE, 3072, 3072), (EmbeddingModels.SMALL, 3072, 1536), (EmbeddingModels.LEGACY, 3072, 1536), (EmbeddingModels.SMALL, 256, 256)])
+async def test_embedding_passes_dimensions(embedding_request, model, requested, expected):
+    """GIVEN text and a model.
+    WHEN the text operation is called.
+    THEN embedding passes dimensions."""
+    client = embedding_request
+    await embeddings.get_embedding("text", client=client, model=model.upper(), dimensions=requested)
+    expected = [mock_call(input="text", model=model, encoding_format="float", dimensions=expected)]
+    assert client.make_embeddings.await_args_list == expected
 
 
 @pytest.fixture

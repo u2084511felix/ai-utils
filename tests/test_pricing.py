@@ -6,13 +6,23 @@ from aiutils.pricing import Currency, Price, calculate_token_cost, convert, get_
 
 
 @pytest.mark.parametrize("model", ["gpt-4o", " GPT-4O ", "GpT-4o"])
-def test_price_lookup_is_case_insensitive(model):
+def test_price_lookup_normalizes_name(model):
     """GIVEN specified prices and currency values.
     WHEN the price operation is called.
-    THEN the result has the expected model name and input price."""
+    THEN price lookup normalizes name."""
     price = get_price(model)
-    expected = ("gpt-4o", 2.5)
-    assert (price.name, price.input) == expected
+    expected = "gpt-4o"
+    assert price.name == expected
+
+
+@pytest.mark.parametrize("model", ["gpt-4o", " GPT-4O ", "GpT-4o"])
+def test_price_lookup_returns_rate(model):
+    """GIVEN specified prices and currency values.
+    WHEN the price operation is called.
+    THEN price lookup returns rate."""
+    price = get_price(model)
+    expected = 2.5
+    assert price.input == expected
 
 
 def test_unknown_price_has_helpful_error():
@@ -126,15 +136,44 @@ def discounted_price():
     return price
 
 
-def test_price_conversion_preserves_units_and_discount(discounted_price):
+def test_price_conversion_converts_input(discounted_price):
     """GIVEN specified prices and currency values.
     WHEN the price operation is called.
-    THEN the converted rates retain the price units and discount."""
+    THEN price conversion converts input."""
     price = discounted_price
     converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
-    actual = (converted.input, converted.output, converted.cached_input is None, converted.discount)
-    expected = (5, 10, True, 2)
-    assert actual == expected
+    expected = 5
+    assert converted.input == expected
+
+
+def test_price_conversion_converts_output(discounted_price):
+    """GIVEN specified prices and currency values.
+    WHEN the price operation is called.
+    THEN price conversion converts output."""
+    price = discounted_price
+    converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
+    expected = 10
+    assert converted.output == expected
+
+
+def test_price_conversion_retains_absent_cache(discounted_price):
+    """GIVEN specified prices and currency values.
+    WHEN the price operation is called.
+    THEN price conversion retains absent cache."""
+    price = discounted_price
+    converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
+    expected = None
+    assert converted.cached_input is expected
+
+
+def test_price_conversion_retains_discount(discounted_price):
+    """GIVEN specified prices and currency values.
+    WHEN the price operation is called.
+    THEN price conversion retains discount."""
+    price = discounted_price
+    converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
+    expected = 2
+    assert converted.discount == expected
 
 
 @pytest.fixture

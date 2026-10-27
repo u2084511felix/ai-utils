@@ -63,14 +63,23 @@ def test_negative_charge_rejected():
 
 
 @pytest.mark.parametrize("limit", [None, 0, 10])
-def test_budget_initial_state(limit):
+def test_budget_retains_limit(limit):
     """GIVEN a budget and specified token counts.
     WHEN the budget operation is called.
-    THEN the budget has the specified limit and no charges."""
+    THEN budget retains limit."""
     instance = make_spend_budget(limit)
-    actual = (instance.limit_usd, instance.spent_usd)
-    expected = (limit, 0)
-    assert actual == expected
+    expected = limit
+    assert instance.limit_usd == expected
+
+
+@pytest.mark.parametrize("limit", [None, 0, 10])
+def test_budget_starts_without_charges(limit):
+    """GIVEN a budget and specified token counts.
+    WHEN the budget operation is called.
+    THEN budget starts without charges."""
+    instance = make_spend_budget(limit)
+    expected = 0
+    assert instance.spent_usd == expected
 
 
 def test_negative_limit_rejected():
@@ -109,14 +118,22 @@ def used_budget(linear_cost):
     return instance
 
 
-def test_unlimited_budget_accepts_multiple_calls(used_budget):
+def test_unlimited_budget_returns_charge(used_budget):
     """GIVEN a budget and specified token counts.
     WHEN the budget operation is called.
-    THEN the budget accepts the call and records the total charge."""
+    THEN unlimited budget returns charge."""
     charge = used_budget.begin_call(model="test", input_tokens=100)
-    actual = (charge.input_tokens, used_budget.spent_usd)
-    expected = (100, 300)
-    assert actual == expected
+    expected = 100
+    assert charge.input_tokens == expected
+
+
+def test_unlimited_budget_records_total(used_budget):
+    """GIVEN a budget and specified token counts.
+    WHEN the budget operation is called.
+    THEN unlimited budget records total."""
+    used_budget.begin_call(model="test", input_tokens=100)
+    expected = 300
+    assert used_budget.spent_usd == expected
 
 
 @pytest.fixture
@@ -171,15 +188,26 @@ def raced_budget(linear_cost):
     return (instance, sum(accepted))
 
 
-def test_reservations_are_atomic_between_threads(raced_budget):
+def test_concurrent_budget_limits_accepted_calls(raced_budget):
     """GIVEN a budget after concurrent reservation requests.
     WHEN the budget operation is called.
-    THEN only calls below the limit are accepted."""
+    THEN concurrent budget limits accepted calls."""
     instance, accepted = raced_budget
     with pytest.raises(BudgetExceededError):
         instance.begin_call(model="test", input_tokens=1)
-    expected = (19, 19)
-    assert (accepted, instance.spent_usd) == expected
+    expected = 19
+    assert accepted == expected
+
+
+def test_concurrent_budget_records_accepted_charges(raced_budget):
+    """GIVEN a budget after concurrent reservation requests.
+    WHEN the budget operation is called.
+    THEN concurrent budget records accepted charges."""
+    instance, accepted = raced_budget
+    with pytest.raises(BudgetExceededError):
+        instance.begin_call(model="test", input_tokens=1)
+    expected = 19
+    assert instance.spent_usd == expected
 
 
 @pytest.fixture

@@ -228,15 +228,34 @@ def apply_persists_history_case(patch_case, tmp_path):
     return (history, item, target, tmp_path)
 
 
-def test_apply_persists_history(apply_persists_history_case):
+def test_patch_updates_file(apply_persists_history_case):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN the file is updated and the patch history is saved."""
+    THEN patch updates file."""
     history, item, target, tmp_path = apply_persists_history_case
     diffs.apply_diff(item, [str(target)], history)
-    result = (target.read_text(), diffs.load_last_diffs(), (tmp_path / "diff_tmp" / "call-1.txt").read_text())
-    expected = ("new\n", {"call-1": str(target)}, "-old\n+new")
-    assert result == expected
+    expected = "new\n"
+    assert target.read_text() == expected
+
+
+def test_patch_saves_history(apply_persists_history_case):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN patch saves history."""
+    history, item, target, tmp_path = apply_persists_history_case
+    diffs.apply_diff(item, [str(target)], history)
+    expected = {"call-1": str(target)}
+    assert diffs.load_last_diffs() == expected
+
+
+def test_patch_saves_diff(apply_persists_history_case):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN patch saves diff."""
+    history, item, target, tmp_path = apply_persists_history_case
+    diffs.apply_diff(item, [str(target)], history)
+    expected = "-old\n+new"
+    assert (tmp_path / "diff_tmp" / "call-1.txt").read_text() == expected
 
 
 @pytest.fixture
@@ -246,14 +265,22 @@ def applied_patch(patch_case):
     return target
 
 
-def test_undo_restores_file(applied_patch, tmp_path):
+def test_undo_restores_text(applied_patch, tmp_path):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN the original text is restored and the saved patch is removed."""
+    THEN undo restores text."""
     diffs.undo_last_diff()
-    result = (applied_patch.read_text(), (tmp_path / "diff_tmp" / "call-1.txt").exists())
-    expected = ("old\n", False)
-    assert result == expected
+    expected = "old\n"
+    assert applied_patch.read_text() == expected
+
+
+def test_undo_removes_saved_patch(applied_patch, tmp_path):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN undo removes saved patch."""
+    diffs.undo_last_diff()
+    expected = False
+    assert (tmp_path / "diff_tmp" / "call-1.txt").exists() == expected
 
 
 @pytest.fixture
@@ -263,16 +290,24 @@ def forbidden_patch(tmp_path, capsys):
     return (item, target, capsys)
 
 
-def test_apply_diff_without_allowed_paths_does_nothing(forbidden_patch):
+def test_forbidden_patch_creates_no_file(forbidden_patch):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN no file is created and the missing path is reported."""
+    THEN forbidden patch creates no file."""
     item, target, capsys = forbidden_patch
     diffs.apply_diff(item, [], {})
-    result = not target.exists()
-    actual = (result, "Path not found" in capsys.readouterr().out)
-    expected = (True, True)
-    assert actual == expected
+    expected = False
+    assert target.exists() is expected
+
+
+def test_forbidden_patch_reports_path(forbidden_patch):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN forbidden patch reports path."""
+    item, target, capsys = forbidden_patch
+    diffs.apply_diff(item, [], {})
+    expected = "Path not found"
+    assert expected in capsys.readouterr().out
 
 
 @pytest.fixture
@@ -287,16 +322,47 @@ def file_operation(tmp_path, monkeypatch, operation):
 
 
 @pytest.mark.parametrize("operation", ["create_file", "delete_file"])
-def test_apply_diff_dispatches_file_operations(file_operation, operation):
+def test_file_operation_changes_existence(file_operation, operation):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN the requested file operation is applied without update history."""
+    THEN file operation changes existence."""
     history, item, target, tmp_path = file_operation
     diffs.apply_diff(item, [str(target)], history)
-    result = target.exists() is (operation == "create_file")
-    actual = (result, target.read_text() == "created" if target.exists() else True, history, not (tmp_path / "last_diffs.json").exists())
-    expected = (True, True, {}, True)
-    assert actual == expected
+    expected = operation == "create_file"
+    assert target.exists() is expected
+
+
+@pytest.mark.parametrize("operation", ["create_file"])
+def test_file_creation_writes_content(file_operation, operation):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN file creation writes content."""
+    history, item, target, tmp_path = file_operation
+    diffs.apply_diff(item, [str(target)], history)
+    expected = "created"
+    assert target.read_text() == expected
+
+
+@pytest.mark.parametrize("operation", ["create_file", "delete_file"])
+def test_file_operation_retains_history(file_operation, operation):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN file operation retains history."""
+    history, item, target, tmp_path = file_operation
+    diffs.apply_diff(item, [str(target)], history)
+    expected = {}
+    assert history == expected
+
+
+@pytest.mark.parametrize("operation", ["create_file", "delete_file"])
+def test_file_operation_saves_no_history(file_operation, operation):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN file operation saves no history."""
+    history, item, target, tmp_path = file_operation
+    diffs.apply_diff(item, [str(target)], history)
+    expected = True
+    assert (not (tmp_path / "last_diffs.json").exists()) == expected
 
 
 @pytest.fixture
@@ -309,16 +375,25 @@ def relative_patch(tmp_path, monkeypatch):
     return (history, item, target)
 
 
-def test_apply_diff_resolves_path(relative_patch):
+def test_relative_patch_updates_file(relative_patch):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN the allowed path is selected and the update is recorded."""
+    THEN relative patch updates file."""
     history, item, target = relative_patch
     diffs.apply_diff(item, [str(target)], history)
     result = target.read_text()
-    actual = (result, history)
-    expected = ("new", {"id": str(target)})
-    assert actual == expected
+    expected = "new"
+    assert result == expected
+
+
+def test_relative_patch_records_path(relative_patch):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN relative patch records path."""
+    history, item, target = relative_patch
+    diffs.apply_diff(item, [str(target)], history)
+    expected = {"id": str(target)}
+    assert history == expected
 
 
 @pytest.fixture
@@ -329,16 +404,25 @@ def unknown_operation(tmp_path, capsys):
     return (item, target, capsys)
 
 
-def test_unknown_diff_operation_does_not_modify_files(unknown_operation):
+def test_unknown_patch_preserves_file(unknown_operation):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN the file does not change and the unknown operation is reported."""
+    THEN unknown patch preserves file."""
     item, target, capsys = unknown_operation
     diffs.apply_diff(item, [str(target)], {})
     result = target.read_text()
-    actual = (result, "Unknown diff operation" in capsys.readouterr().out)
-    expected = ("original", True)
-    assert actual == expected
+    expected = "original"
+    assert result == expected
+
+
+def test_unknown_patch_reports_operation(unknown_operation):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN unknown patch reports operation."""
+    item, target, capsys = unknown_operation
+    diffs.apply_diff(item, [str(target)], {})
+    expected = "Unknown diff operation"
+    assert expected in capsys.readouterr().out
 
 
 @pytest.fixture
@@ -351,16 +435,35 @@ def failed_undo(tmp_path, monkeypatch, capsys):
     return (target, tmp_path, capsys)
 
 
-def test_undo_failure_preserves_file_and_saved_diff(failed_undo):
+def test_failed_undo_preserves_file(failed_undo):
     """GIVEN a saved patch and file text that does not match it.
     WHEN the patch operation is called.
-    THEN the error is reported and the file and saved patch are retained."""
+    THEN failed undo preserves file."""
     target, tmp_path, capsys = failed_undo
     diffs.undo_last_diff()
     result = target.read_text()
-    actual = (result, (tmp_path / "diff_tmp" / "id.txt").exists(), "Error while undoing diff" in capsys.readouterr().out)
-    expected = ("unrelated content", True, True)
-    assert actual == expected
+    expected = "unrelated content"
+    assert result == expected
+
+
+def test_failed_undo_retains_patch(failed_undo):
+    """GIVEN a saved patch and file text that does not match it.
+    WHEN the patch operation is called.
+    THEN failed undo retains patch."""
+    target, tmp_path, capsys = failed_undo
+    diffs.undo_last_diff()
+    expected = True
+    assert (tmp_path / "diff_tmp" / "id.txt").exists() == expected
+
+
+def test_failed_undo_reports_error(failed_undo):
+    """GIVEN a saved patch and file text that does not match it.
+    WHEN the patch operation is called.
+    THEN failed undo reports error."""
+    target, tmp_path, capsys = failed_undo
+    diffs.undo_last_diff()
+    expected = "Error while undoing diff"
+    assert expected in capsys.readouterr().out
 
 
 @pytest.fixture
@@ -373,16 +476,35 @@ def failed_operation(tmp_path, monkeypatch):
     return (history, item, target, tmp_path)
 
 
-def test_failed_operation_does_not_record_success(failed_operation):
+def test_failed_patch_preserves_file(failed_operation):
     """GIVEN a patch operation that cannot be applied.
     WHEN the patch operation is called.
-    THEN the file does not change and no success history is saved."""
+    THEN failed patch preserves file."""
     history, item, target, tmp_path = failed_operation
     diffs.apply_diff(item, [str(target)], history)
     result = target.read_text()
-    actual = (result, history, not (tmp_path / "last_diffs.json").exists())
-    expected = ("original", {}, True)
-    assert actual == expected
+    expected = "original"
+    assert result == expected
+
+
+def test_failed_patch_retains_history(failed_operation):
+    """GIVEN a patch operation that cannot be applied.
+    WHEN the patch operation is called.
+    THEN failed patch retains history."""
+    history, item, target, tmp_path = failed_operation
+    diffs.apply_diff(item, [str(target)], history)
+    expected = {}
+    assert history == expected
+
+
+def test_failed_patch_saves_no_history(failed_operation):
+    """GIVEN a patch operation that cannot be applied.
+    WHEN the patch operation is called.
+    THEN failed patch saves no history."""
+    history, item, target, tmp_path = failed_operation
+    diffs.apply_diff(item, [str(target)], history)
+    expected = True
+    assert (not (tmp_path / "last_diffs.json").exists()) == expected
 
 
 @pytest.fixture
@@ -396,16 +518,26 @@ def provider_patch(client, monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_diffs_module_applies_provider_operations(provider_patch):
+async def test_provider_patch_creates_file(provider_patch):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN the request uses the patch tool and the file is created."""
+    THEN provider patch creates file."""
     module, send, target = provider_patch
     await module.apply_diff("create file", [str(target)], verbose=True)
     result = target.read_text()
-    actual = (result, send.await_args_list)
-    expected = ("content", [mock_call("create file", model="gpt-4o", verbose=True, tools=[{"type": "apply_patch"}])])
-    assert actual == expected
+    expected = "content"
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_provider_patch_passes_request(provider_patch):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN provider patch passes request."""
+    module, send, target = provider_patch
+    await module.apply_diff("create file", [str(target)], verbose=True)
+    expected = [mock_call("create file", model="gpt-4o", verbose=True, tools=[{"type": "apply_patch"}])]
+    assert send.await_args_list == expected
 
 
 @pytest.fixture
@@ -460,15 +592,25 @@ def wrapped_patch(client, tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_diffs_module_applies_wrapped_response(wrapped_patch):
+async def test_wrapped_patch_updates_file(wrapped_patch):
     """GIVEN text and a file patch.
     WHEN the patch operation is called.
-    THEN the response updates the file and saves the patch history."""
+    THEN wrapped patch updates file."""
     module, target = wrapped_patch
     await module.apply_diff("edit", [str(target)])
-    result = (target.read_text(), diffs.load_last_diffs())
-    expected = ("new", {"patch-1": str(target)})
-    assert result == expected
+    expected = "new"
+    assert target.read_text() == expected
+
+
+@pytest.mark.asyncio
+async def test_wrapped_patch_saves_history(wrapped_patch):
+    """GIVEN text and a file patch.
+    WHEN the patch operation is called.
+    THEN wrapped patch saves history."""
+    module, target = wrapped_patch
+    await module.apply_diff("edit", [str(target)])
+    expected = {"patch-1": str(target)}
+    assert diffs.load_last_diffs() == expected
 
 
 @pytest_asyncio.fixture

@@ -6,15 +6,44 @@ from aiutils.models import ClassificationModels, GoogleModels, OpenAIModels, Tex
 
 
 @pytest.mark.parametrize("enum,value", [(GoogleModels, "gemini-2.5-pro"), (OpenAIModels, "gpt-4o"), (TextModels, "gpt-5.2"), (TextModels, "gemini-3-pro-preview"), (ClassificationModels, "jev-latest"), (Vendor, "openai")])
-def test_models_are_string_enums(enum, value):
+def test_model_member_has_text(enum, value):
     """GIVEN a model name.
     WHEN the model member is created.
-    THEN the member has the expected text value and can be restored from a saved value."""
+    THEN model member has text."""
     member = enum(value)
     result = str(member)
-    actual = (result, member, member in list(enum), pickle.loads(pickle.dumps(member)) is member)
-    expected = (value, value, True, True)
-    assert actual == expected
+    expected = value
+    assert result == expected
+
+
+@pytest.mark.parametrize("enum,value", [(GoogleModels, "gemini-2.5-pro"), (OpenAIModels, "gpt-4o"), (TextModels, "gpt-5.2"), (TextModels, "gemini-3-pro-preview"), (ClassificationModels, "jev-latest"), (Vendor, "openai")])
+def test_model_member_equals_value(enum, value):
+    """GIVEN a model name.
+    WHEN the model member is created.
+    THEN model member equals value."""
+    member = enum(value)
+    expected = value
+    assert member == expected
+
+
+@pytest.mark.parametrize("enum,value", [(GoogleModels, "gemini-2.5-pro"), (OpenAIModels, "gpt-4o"), (TextModels, "gpt-5.2"), (TextModels, "gemini-3-pro-preview"), (ClassificationModels, "jev-latest"), (Vendor, "openai")])
+def test_model_member_belongs_to_enum(enum, value):
+    """GIVEN a model name.
+    WHEN the model member is created.
+    THEN model member belongs to enum."""
+    member = enum(value)
+    expected = member
+    assert expected in list(enum)
+
+
+@pytest.mark.parametrize("enum,value", [(GoogleModels, "gemini-2.5-pro"), (OpenAIModels, "gpt-4o"), (TextModels, "gpt-5.2"), (TextModels, "gemini-3-pro-preview"), (ClassificationModels, "jev-latest"), (Vendor, "openai")])
+def test_model_member_survives_serialization(enum, value):
+    """GIVEN a model name.
+    WHEN the model member is created.
+    THEN model member survives serialization."""
+    member = enum(value)
+    expected = member
+    assert pickle.loads(pickle.dumps(member)) is expected
 
 
 @pytest.mark.parametrize("alias,expected", [(TextModels.hipster, TextModels.gpt_4o), (TextModels.o1preview, TextModels.o1_preview)])

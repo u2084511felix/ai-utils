@@ -24,16 +24,74 @@ def legacy_request(client, monkeypatch, reasoning):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reasoning", [False, True])
-async def test_legacy_function_call_builds_request(legacy_request, reasoning):
+async def test_legacy_call_returns_reply(legacy_request, reasoning):
     """GIVEN a module and specified input.
     WHEN the module operation is called.
-    THEN the request contains the messages, model, tools, and reasoning setting."""
+    THEN legacy call returns reply."""
     module, send = legacy_request
     result = await module.function_call_legacy_structured_output("instructions", "question")
-    result = result is send.return_value
-    actual = (result, module.request_body["messages"], module.request_body["model"], module.request_body["tools"], module.request_body["reasoning_effort"] == "none" if reasoning else True, send.await_args_list)
-    expected = (True, [{"role": "system", "content": "instructions"}, {"role": "user", "content": "question"}], TextModels.previous, module.tools, True, [mock_call(module.request_body)])
-    assert actual == expected
+    expected = send.return_value
+    assert result is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reasoning", [False, True])
+async def test_legacy_call_passes_messages(legacy_request, reasoning):
+    """GIVEN a module and specified input.
+    WHEN the module operation is called.
+    THEN legacy call passes messages."""
+    module, send = legacy_request
+    await module.function_call_legacy_structured_output("instructions", "question")
+    expected = [{"role": "system", "content": "instructions"}, {"role": "user", "content": "question"}]
+    assert module.request_body["messages"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reasoning", [False, True])
+async def test_legacy_call_selects_model(legacy_request, reasoning):
+    """GIVEN a module and specified input.
+    WHEN the module operation is called.
+    THEN legacy call selects model."""
+    module, send = legacy_request
+    await module.function_call_legacy_structured_output("instructions", "question")
+    expected = TextModels.previous
+    assert module.request_body["model"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reasoning", [False, True])
+async def test_legacy_call_passes_tools(legacy_request, reasoning):
+    """GIVEN a module and specified input.
+    WHEN the module operation is called.
+    THEN legacy call passes tools."""
+    module, send = legacy_request
+    await module.function_call_legacy_structured_output("instructions", "question")
+    expected = module.tools
+    assert module.request_body["tools"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reasoning", [False, True])
+async def test_legacy_call_sets_reasoning(legacy_request, reasoning):
+    """GIVEN a module and specified input.
+    WHEN the module operation is called.
+    THEN legacy call sets reasoning."""
+    module, send = legacy_request
+    await module.function_call_legacy_structured_output("instructions", "question")
+    expected = "none" if reasoning else None
+    assert module.request_body.get("reasoning_effort") == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reasoning", [False, True])
+async def test_legacy_call_sends_request(legacy_request, reasoning):
+    """GIVEN a module and specified input.
+    WHEN the module operation is called.
+    THEN legacy call sends request."""
+    module, send = legacy_request
+    await module.function_call_legacy_structured_output("instructions", "question")
+    expected = [mock_call(module.request_body)]
+    assert send.await_args_list == expected
 
 
 @pytest.fixture
@@ -101,14 +159,23 @@ def changed_refactor():
     return first
 
 
-def test_refactor_has_independent_state(changed_refactor):
+def test_refactor_has_independent_targets(changed_refactor):
     """GIVEN a module and specified input.
     WHEN the module operation is called.
-    THEN the new module has independent target and prompt state."""
+    THEN refactor has independent targets."""
+    second = Refactor()
+    expected = []
+    assert second.target_file_paths == expected
+
+
+def test_refactor_has_independent_prompts(changed_refactor):
+    """GIVEN a module and specified input.
+    WHEN the module operation is called.
+    THEN refactor has independent prompts."""
     first = changed_refactor
     second = Refactor()
-    expected = ([], False)
-    assert (second.target_file_paths, first.prompt_engine is second.prompt_engine) == expected
+    expected = False
+    assert (first.prompt_engine is second.prompt_engine) == expected
 
 
 @pytest.fixture

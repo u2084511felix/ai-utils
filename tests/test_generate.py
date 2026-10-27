@@ -43,14 +43,22 @@ def changed_module():
     return first
 
 
-def test_module_mutable_defaults_are_independent(changed_module):
+def test_module_has_independent_messages(changed_module):
     """GIVEN a module with changed messages and bias.
     WHEN another module is created.
-    THEN the new module has empty message and bias fields."""
+    THEN module has independent messages."""
     second = GPTModule()
-    actual = (second.messages, second.logit_bias)
-    expected = ([], {})
-    assert actual == expected
+    expected = []
+    assert second.messages == expected
+
+
+def test_module_has_independent_bias(changed_module):
+    """GIVEN a module with changed messages and bias.
+    WHEN another module is created.
+    THEN module has independent bias."""
+    second = GPTModule()
+    expected = {}
+    assert second.logit_bias == expected
 
 
 @pytest.fixture
@@ -86,41 +94,74 @@ async def test_wrong_model_or_vendor_rejected(vendor_generator, model, vendor):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("chat", [True, False])
-async def test_generate_builds_request_and_selects_endpoint(generator, chat):
+async def test_generation_passes_request(generator, chat):
     """GIVEN a generator and specified request options.
     WHEN a response is requested.
-    THEN the selected endpoint receives the specified messages and options."""
-    reply = await generator.generate("instructions", "question", model="gpt-4o", temperature=0.4, chat=chat)
+    THEN generation passes request."""
+    await generator.generate("instructions", "question", model="gpt-4o", temperature=0.4, chat=chat)
     expected = dict(model="gpt-4o", temperature=0.4, messages=[{"role": "system", "content": "instructions"}, {"role": "user", "content": "question"}])
     method = generator.client.async_chat_completions if chat else generator.client.async_chat_completions_body
-    actual = (method.await_args_list, reply is method.return_value)
-    expected = ([mock_call(expected)], True)
-    assert actual == expected
+    expected = [mock_call(expected)]
+    assert method.await_args_list == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chat", [True, False])
+async def test_generation_returns_reply(generator, chat):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN generation returns reply."""
+    reply = await generator.generate("instructions", "question", model="gpt-4o", temperature=0.4, chat=chat)
+    dict(model="gpt-4o", temperature=0.4, messages=[{"role": "system", "content": "instructions"}, {"role": "user", "content": "question"}])
+    method = generator.client.async_chat_completions if chat else generator.client.async_chat_completions_body
+    expected = method.return_value
+    assert reply is expected
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("system,prompt,temp,error", [("", "q", 0, "system_message"), ("s", "", 0, "prompt"), ("s", "q", -1, "temperature")])
-async def test_generate_validates_before_calling_client(generator, system, prompt, temp, error):
+async def test_invalid_generation_avoids_provider(generator, system, prompt, temp, error):
     """GIVEN an empty message or a negative temperature.
     WHEN a response is requested.
-    THEN the input is rejected before messages or provider requests are added."""
+    THEN invalid generation avoids provider."""
     with pytest.raises(ValueError, match=error):
         await generator.generate(system, prompt, temperature=temp)
-    actual = (generator.client.async_chat_completions.await_args_list, generator.messages)
-    expected = ([], [])
-    assert actual == expected
+    expected = []
+    assert generator.client.async_chat_completions.await_args_list == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system,prompt,temp,error", [("", "q", 0, "system_message"), ("s", "", 0, "prompt"), ("s", "q", -1, "temperature")])
+async def test_invalid_generation_preserves_messages(generator, system, prompt, temp, error):
+    """GIVEN an empty message or a negative temperature.
+    WHEN a response is requested.
+    THEN invalid generation preserves messages."""
+    with pytest.raises(ValueError, match=error):
+        await generator.generate(system, prompt, temperature=temp)
+    expected = []
+    assert generator.messages == expected
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("model,effort,expected,temp", [(TextModels.gpt_5_2, "default", "none", 1), (TextModels.gpt_5, "default", "minimal", 1), (TextModels.gpt_5_2, "high", "high", 1), (TextModels.gpt_5, "low", "low", 1), (TextModels.gpt_4o, "default", None, 0.3)])
-async def test_reasoning_settings(generator, model, effort, expected, temp):
+async def test_generation_sets_reasoning(generator, model, effort, expected, temp):
     """GIVEN a generator and specified request options.
     WHEN a response is requested.
-    THEN the request uses the specified reasoning and temperature values."""
+    THEN generation sets reasoning."""
     await generator.generate("s", "p", model=model, reasoning_effort=effort, temperature=0.3)
-    actual = (generator.reasoning_effort, generator.temperature)
-    expected = (expected, temp)
-    assert actual == expected
+    expected = expected
+    assert generator.reasoning_effort == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("model,effort,expected,temp", [(TextModels.gpt_5_2, "default", "none", 1), (TextModels.gpt_5, "default", "minimal", 1), (TextModels.gpt_5_2, "high", "high", 1), (TextModels.gpt_5, "low", "low", 1), (TextModels.gpt_4o, "default", None, 0.3)])
+async def test_generation_sets_temperature(generator, model, effort, expected, temp):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN generation sets temperature."""
+    await generator.generate("s", "p", model=model, reasoning_effort=effort, temperature=0.3)
+    expected = temp
+    assert generator.temperature == expected
 
 
 @pytest_asyncio.fixture
@@ -130,15 +171,25 @@ async def conversation(generator):
 
 
 @pytest.mark.asyncio
-async def test_continued_response_keeps_conversation(conversation):
+async def test_continuation_retains_messages(conversation):
     """GIVEN an existing conversation and a new exchange.
     WHEN a response is requested.
-    THEN the request includes the previous messages and the new exchange."""
+    THEN continuation retains messages."""
     generator = conversation
     await generator.continued_response("answer", "second")
-    actual = (generator.request_body["messages"], generator.client.async_chat_completions.await_count)
-    expected = ([{"role": "system", "content": "s"}, {"role": "user", "content": "first"}, {"role": "assistant", "content": "answer"}, {"role": "user", "content": "second"}], 2)
-    assert actual == expected
+    expected = [{"role": "system", "content": "s"}, {"role": "user", "content": "first"}, {"role": "assistant", "content": "answer"}, {"role": "user", "content": "second"}]
+    assert generator.request_body["messages"] == expected
+
+
+@pytest.mark.asyncio
+async def test_continuation_sends_once(conversation):
+    """GIVEN an existing conversation and a new exchange.
+    WHEN a response is requested.
+    THEN continuation sends once."""
+    generator = conversation
+    await generator.continued_response("answer", "second")
+    expected = 2
+    assert generator.client.async_chat_completions.await_count == expected
 
 
 @pytest.mark.asyncio
@@ -160,15 +211,36 @@ def json_schema(generator):
 
 
 @pytest.mark.asyncio
-async def test_json_structured_output(json_schema):
+async def test_json_generation_returns_content(json_schema):
     """GIVEN a generator and specified request options.
     WHEN a response is requested.
-    THEN the request uses the JSON schema and returns the provider reply."""
+    THEN json generation returns content."""
     schema, generator = json_schema
     reply = await generator.structured_output("s", "p", schema=json.dumps(schema), model="gpt-4o")
-    actual = (reply.content, generator.request_body["response_format"], generator.client.async_chat_completions_body.await_args_list)
-    expected = ('{"ok": true}', {"type": "json_schema", "json_schema": schema}, [mock_call(generator.request_body, input_type=InputType.JSON)])
-    assert actual == expected
+    expected = '{"ok": true}'
+    assert reply.content == expected
+
+
+@pytest.mark.asyncio
+async def test_json_generation_passes_schema(json_schema):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN json generation passes schema."""
+    schema, generator = json_schema
+    await generator.structured_output("s", "p", schema=json.dumps(schema), model="gpt-4o")
+    expected = {"type": "json_schema", "json_schema": schema}
+    assert generator.request_body["response_format"] == expected
+
+
+@pytest.mark.asyncio
+async def test_json_generation_selects_endpoint(json_schema):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN json generation selects endpoint."""
+    schema, generator = json_schema
+    await generator.structured_output("s", "p", schema=json.dumps(schema), model="gpt-4o")
+    expected = [mock_call(generator.request_body, input_type=InputType.JSON)]
+    assert generator.client.async_chat_completions_body.await_args_list == expected
 
 
 @pytest.fixture
@@ -181,15 +253,36 @@ def pydantic_schema(generator):
 
 
 @pytest.mark.asyncio
-async def test_pydantic_structured_output_and_assistant_context(pydantic_schema):
+async def test_pydantic_generation_retains_schema(pydantic_schema):
     """GIVEN a generator and specified request options.
     WHEN a response is requested.
-    THEN the request uses the model class and previous assistant message."""
+    THEN pydantic generation retains schema."""
     Result, generator = pydantic_schema
     await generator.structured_output("s", "p", schema=Result, input_type="pydantic", model="gpt-4o", assistant_response="previous")
-    actual = (generator.response_format is Result, generator.messages[0], generator.client.async_chat_completions_body.await_args_list)
-    expected = (True, {"role": "assistant", "content": "previous"}, [mock_call(generator.request_body, input_type=InputType.PYDANTIC)])
-    assert actual == expected
+    expected = Result
+    assert generator.response_format is expected
+
+
+@pytest.mark.asyncio
+async def test_pydantic_generation_retains_context(pydantic_schema):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN pydantic generation retains context."""
+    Result, generator = pydantic_schema
+    await generator.structured_output("s", "p", schema=Result, input_type="pydantic", model="gpt-4o", assistant_response="previous")
+    expected = {"role": "assistant", "content": "previous"}
+    assert generator.messages[0] == expected
+
+
+@pytest.mark.asyncio
+async def test_pydantic_generation_selects_endpoint(pydantic_schema):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN pydantic generation selects endpoint."""
+    Result, generator = pydantic_schema
+    await generator.structured_output("s", "p", schema=Result, input_type="pydantic", model="gpt-4o", assistant_response="previous")
+    expected = [mock_call(generator.request_body, input_type=InputType.PYDANTIC)]
+    assert generator.client.async_chat_completions_body.await_args_list == expected
 
 
 @pytest.mark.asyncio
@@ -283,16 +376,27 @@ def logged_generator(generator):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("assistant", [None, "previous"])
-async def test_structured_debug_logs_response_and_context(logged_generator, assistant):
+async def test_debug_generation_logs_reply(logged_generator, assistant):
     """GIVEN a generator and specified request options.
     WHEN a response is requested.
-    THEN the response and any previous context are logged."""
+    THEN debug generation logs reply."""
     generator = logged_generator
     reply = await generator.structured_output("s", "p", schema="{}", assistant_response=assistant, debug=True)
-    result = mock_call(reply) in generator.logger.debug.call_args_list
-    actual = (result, generator.logger.debug.call_count)
-    expected = (True, 1 if assistant is None else 2)
-    assert actual == expected
+    expected = mock_call(reply)
+    assert expected in generator.logger.debug.call_args_list
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("assistant", [None, "previous"])
+async def test_debug_generation_logs_context(logged_generator, assistant):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN debug generation logs context."""
+    generator = logged_generator
+    reply = await generator.structured_output("s", "p", schema="{}", assistant_response=assistant, debug=True)
+    mock_call(reply)
+    expected = 1 if assistant is None else 2
+    assert generator.logger.debug.call_count == expected
 
 
 @pytest.fixture
@@ -308,13 +412,33 @@ def schema_module(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_pydantic_schema_can_be_loaded_from_module(generator, schema_module):
+async def test_imported_schema_retains_name(generator, schema_module):
     """GIVEN a generator and specified request options.
     WHEN a response is requested.
-    THEN the request uses the imported schema class."""
+    THEN imported schema retains name."""
     await generator.structured_output("s", "p", schema="Result", input_type="pydantic", module_name=schema_module)
-    expected = ("Result", str, True)
-    assert (generator.response_format.__name__, generator.response_format.model_fields["value"].annotation, generator.request_body["response_format"] is generator.response_format) == expected
+    expected = "Result"
+    assert generator.response_format.__name__ == expected
+
+
+@pytest.mark.asyncio
+async def test_imported_schema_retains_field_type(generator, schema_module):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN imported schema retains field type."""
+    await generator.structured_output("s", "p", schema="Result", input_type="pydantic", module_name=schema_module)
+    expected = str
+    assert generator.response_format.model_fields["value"].annotation == expected
+
+
+@pytest.mark.asyncio
+async def test_imported_schema_enters_request(generator, schema_module):
+    """GIVEN a generator and specified request options.
+    WHEN a response is requested.
+    THEN imported schema enters request."""
+    await generator.structured_output("s", "p", schema="Result", input_type="pydantic", module_name=schema_module)
+    expected = generator.response_format
+    assert generator.request_body["response_format"] is expected
 
 
 @pytest.mark.asyncio

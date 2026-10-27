@@ -19,15 +19,25 @@ def tool_request(client, arguments):
 
 
 @pytest.mark.parametrize("arguments,expected", [('{"a": 2, "b": 3}', "5"), ("{}", "default")])
-def test_tool_function_dispatch(tool_request, arguments, expected):
+def test_tool_dispatch_returns_output(tool_request, arguments, expected):
     """GIVEN a tool call and available functions.
     WHEN the tool call is dispatched.
-    THEN the tool receives its arguments and its output is returned."""
+    THEN tool dispatch returns output."""
     call, function, module = tool_request
     result = module.call_function([call], {"add": function})
-    actual = (result, function.call_args_list)
-    expected = ({"add": {"tool_call_id": "call-1", "role": "tool", "name": "add", "content": expected}}, [mock_call(**json.loads(arguments))])
-    assert actual == expected
+    expected = {"add": {"tool_call_id": "call-1", "role": "tool", "name": "add", "content": expected}}
+    assert result == expected
+
+
+@pytest.mark.parametrize("arguments,expected", [('{"a": 2, "b": 3}', "5"), ("{}", "default")])
+def test_tool_dispatch_passes_arguments(tool_request, arguments, expected):
+    """GIVEN a tool call and available functions.
+    WHEN the tool call is dispatched.
+    THEN tool dispatch passes arguments."""
+    call, function, module = tool_request
+    module.call_function([call], {"add": function})
+    expected = [mock_call(**json.loads(arguments))]
+    assert function.call_args_list == expected
 
 
 @pytest.fixture
@@ -153,15 +163,24 @@ def default_template():
     return engine
 
 
-def test_default_jinja_template(default_template):
+def test_default_template_includes_task(default_template):
     """GIVEN a prompt template and its values.
     WHEN the prompt operation is called.
-    THEN the default prompt contains the task and output requirements."""
+    THEN default template includes task."""
     engine = default_template
     engine.set_template_prompt()
-    actual = ("Update the function" in engine.prompt, "OUTPUT REQUIREMENTS:" in engine.prompt)
-    expected = (True, True)
-    assert actual == expected
+    expected = "Update the function"
+    assert expected in engine.prompt
+
+
+def test_default_template_includes_requirements(default_template):
+    """GIVEN a prompt template and its values.
+    WHEN the prompt operation is called.
+    THEN default template includes requirements."""
+    engine = default_template
+    engine.set_template_prompt()
+    expected = "OUTPUT REQUIREMENTS:"
+    assert expected in engine.prompt
 
 
 @pytest.fixture
@@ -180,15 +199,34 @@ def test_recursive_patterns_identify_only_model_collections(model_source):
     assert result == expected
 
 
-def test_rebuild_calls_keep_source_valid(model_source):
+def test_rebuild_adds_parent_call(model_source):
     """GIVEN a source file with model classes.
     WHEN the model source is processed.
-    THEN the valid source contains one rebuild call for the parent model."""
+    THEN rebuild adds parent call."""
     structured.add_model_rebuild_calls(str(model_source))
     content = model_source.read_text()
-    result = (content.count("Parent.model_rebuild()"), "Child.model_rebuild()" in content, compile(content, str(model_source), "exec").co_name)
-    expected = (1, False, "<module>")
-    assert result == expected
+    expected = 1
+    assert content.count("Parent.model_rebuild()") == expected
+
+
+def test_rebuild_omits_child_call(model_source):
+    """GIVEN a source file with model classes.
+    WHEN the model source is processed.
+    THEN rebuild omits child call."""
+    structured.add_model_rebuild_calls(str(model_source))
+    content = model_source.read_text()
+    expected = False
+    assert ("Child.model_rebuild()" in content) == expected
+
+
+def test_rebuild_preserves_valid_source(model_source):
+    """GIVEN a source file with model classes.
+    WHEN the model source is processed.
+    THEN rebuild preserves valid source."""
+    structured.add_model_rebuild_calls(str(model_source))
+    content = model_source.read_text()
+    expected = "<module>"
+    assert compile(content, str(model_source), "exec").co_name == expected
 
 
 @pytest.fixture
@@ -252,15 +290,34 @@ def codegen_process(monkeypatch, failed):
 
 
 @pytest.mark.parametrize("failed", [False, True])
-def test_pydantic_generator_success_and_failure(codegen_process, failed):
+def test_model_codegen_reports_status(codegen_process, failed):
     """GIVEN an operation that reports an error.
     WHEN the schema operation is called.
-    THEN the result reports success or failure and rebuilds only on success."""
+    THEN model codegen reports status."""
+    expected = not failed
+    assert structured.pydantic_model_generator("in.json", "out.py", "templates") is expected
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_model_codegen_passes_input(codegen_process, failed):
+    """GIVEN an operation that reports an error.
+    WHEN the schema operation is called.
+    THEN model codegen passes input."""
     run, rebuild = codegen_process
-    result = structured.pydantic_model_generator("in.json", "out.py", "templates") is (not failed)
-    actual = (result, "--input in.json" in run.call_args.args[0], rebuild.call_args_list == [] if failed else rebuild.call_args_list == [mock_call("out.py")])
-    expected = (True, True, True)
-    assert actual == expected
+    structured.pydantic_model_generator("in.json", "out.py", "templates")
+    expected = "--input in.json"
+    assert expected in run.call_args.args[0]
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_model_codegen_rebuilds_on_success(codegen_process, failed):
+    """GIVEN an operation that reports an error.
+    WHEN the schema operation is called.
+    THEN model codegen rebuilds on success."""
+    run, rebuild = codegen_process
+    structured.pydantic_model_generator("in.json", "out.py", "templates")
+    expected = [] if failed else [mock_call("out.py")]
+    assert rebuild.call_args_list == expected
 
 
 @pytest.fixture
@@ -272,15 +329,43 @@ def schema_codegen(tmp_path, monkeypatch):
     return (generator, schema, target)
 
 
-def test_reformat_schema_writes_json_and_invokes_codegen(schema_codegen):
+def test_schema_conversion_reports_success(schema_codegen):
     """GIVEN a schema and a model generation service.
     WHEN the schema operation is called.
-    THEN the saved schema and model generation request match the supplied schema."""
+    THEN schema conversion reports success."""
     generator, schema, target = schema_codegen
-    result = structured.reformat_generated_schema(schema, str(target), "model.py") is True
-    actual = (result, json.loads(target.read_text()), generator.call_args.args[:2])
-    expected = (True, {"$schema": "http://json-schema.org/draft-07/schema#", "title": "Result", "description": "A result", "type": "object", "properties": schema["schema"]["properties"], "required": ["value"], "additionalProperties": False}, (str(target), "model.py"))
-    assert actual == expected
+    expected = True
+    assert structured.reformat_generated_schema(schema, str(target), "model.py") is expected
+
+
+def test_schema_conversion_writes_json(schema_codegen):
+    """GIVEN a schema and a model generation service.
+    WHEN the schema operation is called.
+    THEN schema conversion writes json."""
+    generator, schema, target = schema_codegen
+    structured.reformat_generated_schema(schema, str(target), "model.py")
+    expected = {"$schema": "http://json-schema.org/draft-07/schema#", "title": "Result", "description": "A result", "type": "object", "properties": schema["schema"]["properties"], "required": ["value"], "additionalProperties": False}
+    assert json.loads(target.read_text()) == expected
+
+
+def test_schema_conversion_passes_input_path(schema_codegen):
+    """GIVEN a schema and a model generation service.
+    WHEN the schema operation is called.
+    THEN the model request has the schema input path."""
+    generator, schema, target = schema_codegen
+    structured.reformat_generated_schema(schema, str(target), "model.py")
+    expected = str(target)
+    assert generator.call_args.args[0] == expected
+
+
+def test_schema_conversion_passes_output_path(schema_codegen):
+    """GIVEN a schema and a model generation service.
+    WHEN the schema operation is called.
+    THEN the model request has the specified output path."""
+    generator, schema, target = schema_codegen
+    structured.reformat_generated_schema(schema, str(target), "model.py")
+    expected = "model.py"
+    assert generator.call_args.args[1] == expected
 
 
 @pytest.fixture
@@ -293,12 +378,21 @@ def parsed_response():
 
 
 @pytest.mark.asyncio
-async def test_responses_structured_output_returns_parsed_model(parsed_response):
+async def test_structured_response_returns_model(parsed_response):
     """GIVEN a schema and a model generation service.
     WHEN the schema operation is called.
-    THEN the request uses the supplied schema and returns the parsed model."""
+    THEN structured response returns model."""
     client, parse, parsed, schema = parsed_response
-    result = await structured.responses_structured_output("model", "instructions", "prompt", schema, client=client) is parsed
-    actual = (result, parse.await_args_list)
-    expected = (True, [mock_call(model="model", instructions="instructions", input="prompt", reasoning={"effort": "low"}, text_format=schema)])
-    assert actual == expected
+    expected = parsed
+    assert await structured.responses_structured_output("model", "instructions", "prompt", schema, client=client) is expected
+
+
+@pytest.mark.asyncio
+async def test_structured_response_passes_schema(parsed_response):
+    """GIVEN a schema and a model generation service.
+    WHEN the schema operation is called.
+    THEN structured response passes schema."""
+    client, parse, parsed, schema = parsed_response
+    await structured.responses_structured_output("model", "instructions", "prompt", schema, client=client)
+    expected = [mock_call(model="model", instructions="instructions", input="prompt", reasoning={"effort": "low"}, text_format=schema)]
+    assert parse.await_args_list == expected

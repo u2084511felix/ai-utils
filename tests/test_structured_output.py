@@ -35,16 +35,63 @@ def legacy_output_configures_tool_and_returns_json_case(function_module):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("system", ["default", "custom instructions"])
-async def test_legacy_output_configures_tool_and_returns_json(legacy_output_configures_tool_and_returns_json_case, system):
+async def test_legacy_output_returns_json(legacy_output_configures_tool_and_returns_json_case, system):
     """GIVEN a schema request and provider response.
     WHEN the schema operation is called.
-    THEN the request uses the schema tool and returns valid JSON."""
+    THEN legacy output returns json."""
     arguments, method, module, schema = legacy_output_configures_tool_and_returns_json_case
     result = await structured.legacy_structured_output("question", json.dumps(schema), system)
+    expected = arguments
+    assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_legacy_output_configures_tools(legacy_output_configures_tool_and_returns_json_case, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN legacy output configures tools."""
+    arguments, method, module, schema = legacy_output_configures_tool_and_returns_json_case
+    await structured.legacy_structured_output("question", json.dumps(schema), system)
+    expected = [{"type": "function", "function": schema}]
+    assert module.tools == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_legacy_output_selects_tool(legacy_output_configures_tool_and_returns_json_case, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN legacy output selects tool."""
+    arguments, method, module, schema = legacy_output_configures_tool_and_returns_json_case
+    await structured.legacy_structured_output("question", json.dumps(schema), system)
+    expected = {"type": "function", "function": {"name": "result"}}
+    assert module.tool_choice == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_legacy_output_passes_instructions(legacy_output_configures_tool_and_returns_json_case, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN legacy output passes instructions."""
+    arguments, method, module, schema = legacy_output_configures_tool_and_returns_json_case
+    await structured.legacy_structured_output("question", json.dumps(schema), system)
     instructions = method.await_args.args[0]
-    actual = (result, module.tools, module.tool_choice, instructions, method.await_args.args[1])
-    expected = (arguments, [{"type": "function", "function": schema}], {"type": "function", "function": {"name": "result"}}, "Supply the function variables for the given function according to the instruction." if system == "default" else system, "question")
-    assert actual == expected
+    expected = "Supply the function variables for the given function according to the instruction." if system == "default" else system
+    assert instructions == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_legacy_output_passes_prompt(legacy_output_configures_tool_and_returns_json_case, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN legacy output passes prompt."""
+    arguments, method, module, schema = legacy_output_configures_tool_and_returns_json_case
+    await structured.legacy_structured_output("question", json.dumps(schema), system)
+    expected = "question"
+    assert method.await_args.args[1] == expected
 
 
 @pytest.fixture
@@ -116,17 +163,124 @@ async def test_legacy_output_rejects_invalid_provider_json(invalid_output):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
 @pytest.mark.parametrize("system", ["default", "custom instructions"])
-async def test_schema_generation_requests_schema_tool(function_module, function, field, system):
+async def test_schema_generation_returns_json(function_module, function, field, system):
     """GIVEN a schema request and provider response.
     WHEN the schema operation is called.
-    THEN the request uses the schema tool and specified instructions."""
+    THEN schema generation returns json."""
     module, method, arguments = function_module
     result = await function({"value": "string"}, system)
+    expected = arguments
+    assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_sets_tool_type(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation sets tool type."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
     tool = module.tools[0]
+    expected = "function"
+    assert tool["type"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_names_tool(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation names tool."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
+    tool = module.tools[0]
+    expected = "Tool_Schema"
+    assert tool["function"]["name"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_defines_field(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation defines field."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
+    tool = module.tools[0]
+    expected = field
+    assert expected in tool["function"]["parameters"]["properties"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_requires_field(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation requires field."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
+    tool = module.tools[0]
+    expected = field
+    assert expected in tool["function"]["parameters"]["required"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_selects_tool(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation selects tool."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
+    expected = "Tool_Schema"
+    assert module.tool_choice["function"]["name"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_sends_once(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation sends once."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
+    expected = 1
+    assert method.await_count == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_passes_instructions(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation passes instructions."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
     instructions, prompt = method.await_args.args
-    actual = (result, tool["type"], tool["function"]["name"], field in tool["function"]["parameters"]["properties"], field in tool["function"]["parameters"]["required"], module.tool_choice["function"]["name"], method.await_count, instructions, prompt)
-    expected = (arguments, "function", "Tool_Schema", True, True, "Tool_Schema", 1, "Generate a JSON schema for the given instruction converting from an existing data model outline, using the function." if system == "default" else system, "Transform this JSON object: {'value': 'string'}")
-    assert actual == expected
+    expected = "Generate a JSON schema for the given instruction converting from an existing data model outline, using the function." if system == "default" else system
+    assert instructions == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("function,field", [(structured.generate_legacy_structured_output_schema, "parameters"), (structured.generate_structured_output_schema, "schema")])
+@pytest.mark.parametrize("system", ["default", "custom instructions"])
+async def test_schema_generation_passes_prompt(function_module, function, field, system):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN schema generation passes prompt."""
+    module, method, arguments = function_module
+    await function({"value": "string"}, system)
+    instructions, prompt = method.await_args.args
+    expected = "Transform this JSON object: {'value': 'string'}"
+    assert prompt == expected
 
 
 @pytest.fixture
@@ -150,15 +304,50 @@ def explicit_options(output_generator, model):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("vendor,model", [("openai", ""), ("openai", "gpt-5.2"), ("openai", "gpt-4o"), ("google", "gemini-2.5-pro")])
-async def test_output_generator_decodes_reply_and_forwards_explicit_options(explicit_options, vendor, model):
+async def test_output_generation_decodes_json(explicit_options, vendor, model):
     """GIVEN a schema request and provider response.
     WHEN the schema operation is called.
-    THEN the request uses the specified options and returns the decoded JSON."""
+    THEN output generation decodes json."""
     client, factory, generate, params, expected_call = explicit_options
     result = await structured.structured_outputs_generator("prompt", "Result", system_msg="custom", input_type="pydantic", module_name="models", params=params, model=model, vendor=vendor, client=client)
-    actual = (result, client.set_vendor.call_args_list, factory.call_args_list, generate.structured_output.await_args_list)
-    expected = ({"value": 42}, [mock_call(vendor)], [mock_call(**params)], [mock_call("custom", "prompt", **expected_call)])
-    assert actual == expected
+    expected = {"value": 42}
+    assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vendor,model", [("openai", ""), ("openai", "gpt-5.2"), ("openai", "gpt-4o"), ("google", "gemini-2.5-pro")])
+async def test_output_generation_selects_vendor(explicit_options, vendor, model):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN output generation selects vendor."""
+    client, factory, generate, params, expected_call = explicit_options
+    await structured.structured_outputs_generator("prompt", "Result", system_msg="custom", input_type="pydantic", module_name="models", params=params, model=model, vendor=vendor, client=client)
+    expected = [mock_call(vendor)]
+    assert client.set_vendor.call_args_list == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vendor,model", [("openai", ""), ("openai", "gpt-5.2"), ("openai", "gpt-4o"), ("google", "gemini-2.5-pro")])
+async def test_output_generation_passes_options(explicit_options, vendor, model):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN output generation passes options."""
+    client, factory, generate, params, expected_call = explicit_options
+    await structured.structured_outputs_generator("prompt", "Result", system_msg="custom", input_type="pydantic", module_name="models", params=params, model=model, vendor=vendor, client=client)
+    expected = [mock_call(**params)]
+    assert factory.call_args_list == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vendor,model", [("openai", ""), ("openai", "gpt-5.2"), ("openai", "gpt-4o"), ("google", "gemini-2.5-pro")])
+async def test_output_generation_passes_schema(explicit_options, vendor, model):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN output generation passes schema."""
+    client, factory, generate, params, expected_call = explicit_options
+    await structured.structured_outputs_generator("prompt", "Result", system_msg="custom", input_type="pydantic", module_name="models", params=params, model=model, vendor=vendor, client=client)
+    expected = [mock_call("custom", "prompt", **expected_call)]
+    assert generate.structured_output.await_args_list == expected
 
 
 @pytest.fixture
@@ -226,16 +415,27 @@ def default_options(output_generator):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("vendor,model,limit", [("openai", "gpt-5.2", 128000), ("openai", "gpt-4o", 32768), ("google", "gemini-2.5-pro", 65536)])
-async def test_output_generator_applies_vendor_and_token_defaults(default_options, vendor, model, limit):
+async def test_output_generation_sets_token_limit(default_options, vendor, model, limit):
     """GIVEN a schema request and provider response.
     WHEN the schema operation is called.
-    THEN the generator uses the supplied client and model token limit."""
+    THEN output generation sets token limit."""
     client, factory = default_options
     await structured.structured_outputs_generator("p", "{}", model=model, vendor=vendor, client=client)
     result = factory.call_args.kwargs.get("max_tokens")
-    actual = (result, factory.call_args.kwargs.get("client") is client)
-    expected = (limit, True)
-    assert actual == expected
+    expected = limit
+    assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vendor,model,limit", [("openai", "gpt-5.2", 128000), ("openai", "gpt-4o", 32768), ("google", "gemini-2.5-pro", 65536)])
+async def test_output_generation_retains_client(default_options, vendor, model, limit):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN output generation retains client."""
+    client, factory = default_options
+    await structured.structured_outputs_generator("p", "{}", model=model, vendor=vendor, client=client)
+    expected = client
+    assert factory.call_args.kwargs.get("client") is expected
 
 
 @pytest.fixture
@@ -253,15 +453,36 @@ def schema_files(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generate_pydantic_model_reads_schema_and_orchestrates(schema_files):
+async def test_model_generation_returns_answer(schema_files):
     """GIVEN a schema request and provider response.
     WHEN the schema operation is called.
-    THEN the schema is converted and the result contains the generated answer."""
+    THEN model generation returns answer."""
     generate, model_path, reformat, reformatted, schema, source = schema_files
     result = await structured.GeneratePydanticModelStructuredOutput("question", str(source), str(reformatted), str(model_path))
-    actual = (result, reformat.call_args_list, generate.await_args_list)
-    expected = ({"answer": 42}, [mock_call(schema, str(reformatted), str(model_path))], [mock_call("question", "Result", input_type="pydantic", module_name="generated_models")])
-    assert actual == expected
+    expected = {"answer": 42}
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_model_generation_converts_schema(schema_files):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN model generation converts schema."""
+    generate, model_path, reformat, reformatted, schema, source = schema_files
+    await structured.GeneratePydanticModelStructuredOutput("question", str(source), str(reformatted), str(model_path))
+    expected = [mock_call(schema, str(reformatted), str(model_path))]
+    assert reformat.call_args_list == expected
+
+
+@pytest.mark.asyncio
+async def test_model_generation_passes_schema(schema_files):
+    """GIVEN a schema request and provider response.
+    WHEN the schema operation is called.
+    THEN model generation passes schema."""
+    generate, model_path, reformat, reformatted, schema, source = schema_files
+    await structured.GeneratePydanticModelStructuredOutput("question", str(source), str(reformatted), str(model_path))
+    expected = [mock_call("question", "Result", input_type="pydantic", module_name="generated_models")]
+    assert generate.await_args_list == expected
 
 
 @pytest.fixture

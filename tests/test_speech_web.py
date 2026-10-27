@@ -27,15 +27,38 @@ def audio_file(speech, result):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("result,expected", [("words", "words"), (SimpleNamespace(text="words"), "words"), (42, "42")])
-async def test_transcribe_rewinds_file_and_extracts_text(audio_file, result, expected):
+async def test_transcription_returns_text(audio_file, result, expected):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the request starts at the start of the file and returns text."""
+    THEN transcription returns text."""
     create, file, speech = audio_file
     result = await speech.transcribe(file, language="en", temperature=0.2)
-    actual = (result, file.tell(), create.call_args_list)
-    expected = (expected, 0, [mock_call(model="stt-test", file=file, response_format="text", language="en", temperature=0.2)])
-    assert actual == expected
+    expected = expected
+    assert result == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("result,expected", [("words", "words"), (SimpleNamespace(text="words"), "words"), (42, "42")])
+async def test_transcription_rewinds_file(audio_file, result, expected):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN transcription rewinds file."""
+    create, file, speech = audio_file
+    await speech.transcribe(file, language="en", temperature=0.2)
+    expected = 0
+    assert file.tell() == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("result,expected", [("words", "words"), (SimpleNamespace(text="words"), "words"), (42, "42")])
+async def test_transcription_passes_options(audio_file, result, expected):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN transcription passes options."""
+    create, file, speech = audio_file
+    await speech.transcribe(file, language="en", temperature=0.2)
+    expected = [mock_call(model="stt-test", file=file, response_format="text", language="en", temperature=0.2)]
+    assert create.call_args_list == expected
 
 
 @pytest.fixture
@@ -45,26 +68,45 @@ def audio_stream(speech):
 
 
 @pytest.mark.asyncio
-async def test_transcribe_accepts_nonseekable_input(audio_stream):
+async def test_stream_transcription_returns_text(audio_stream):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the input is accepted and no language is specified."""
+    THEN stream transcription returns text."""
     file, speech = audio_stream
     result = await speech.transcribe(file)
-    actual = (result, "language" not in speech.client.client.audio.transcriptions.create.call_args.kwargs)
-    expected = ("transcribed", True)
-    assert actual == expected
+    expected = "transcribed"
+    assert result == expected
 
 
 @pytest.mark.asyncio
-async def test_synthesize_uses_defaults(speech):
+async def test_stream_transcription_omits_language(audio_stream):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the request uses the default voice and format and returns audio."""
+    THEN stream transcription omits language."""
+    file, speech = audio_stream
+    await speech.transcribe(file)
+    expected = "language"
+    assert expected not in speech.client.client.audio.transcriptions.create.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_default_speech_returns_audio(speech):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN default speech returns audio."""
     result = await speech.synthesize("hello")
-    actual = (result, speech.client.client.audio.speech.create.call_args_list)
-    expected = (b"audio", [mock_call(model="tts-test", voice="nova", input="hello", response_format="mp3")])
-    assert actual == expected
+    expected = b"audio"
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_default_speech_passes_options(speech):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN default speech passes options."""
+    await speech.synthesize("hello")
+    expected = [mock_call(model="tts-test", voice="nova", input="hello", response_format="mp3")]
+    assert speech.client.client.audio.speech.create.call_args_list == expected
 
 
 @pytest.fixture
@@ -76,15 +118,36 @@ def audio_response(speech):
 
 
 @pytest.mark.asyncio
-async def test_synthesize_reads_response_and_accepts_overrides(audio_response):
+async def test_custom_speech_returns_audio(audio_response):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the request uses the specified options and returns the audio bytes."""
+    THEN custom speech returns audio."""
     response, speech = audio_response
     result = await speech.synthesize("hello", voice="alloy", response_format="wav", speed=1.2)
-    actual = (result, speech.client.client.audio.speech.create.call_args_list, response.read.call_args_list)
-    expected = (b"wav-audio", [mock_call(model="tts-test", voice="alloy", input="hello", response_format="wav", speed=1.2)], [mock_call()])
-    assert actual == expected
+    expected = b"wav-audio"
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_custom_speech_passes_options(audio_response):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN custom speech passes options."""
+    response, speech = audio_response
+    await speech.synthesize("hello", voice="alloy", response_format="wav", speed=1.2)
+    expected = [mock_call(model="tts-test", voice="alloy", input="hello", response_format="wav", speed=1.2)]
+    assert speech.client.client.audio.speech.create.call_args_list == expected
+
+
+@pytest.mark.asyncio
+async def test_custom_speech_reads_response(audio_response):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN custom speech reads response."""
+    response, speech = audio_response
+    await speech.synthesize("hello", voice="alloy", response_format="wav", speed=1.2)
+    expected = [mock_call()]
+    assert response.read.call_args_list == expected
 
 
 @pytest.fixture
@@ -126,14 +189,23 @@ async def test_audio_provider_errors_propagate(audio_failure, method, prompt):
 
 
 @pytest.mark.parametrize("mode,stt,tts", [(SpeechMode.FAST, "gpt-4o-mini-transcribe", "gpt-4o-mini-tts"), (SpeechMode.LEGACY, "whisper-1", "tts-1"), (SpeechMode.HIGH_QUALITY, "gpt-4o-transcribe", "gpt-4o-mini-tts")])
-def test_speech_presets(client, mode, stt, tts):
+def test_speech_preset_selects_transcription_model(client, mode, stt, tts):
     """GIVEN a speech mode.
     WHEN the speech module is created.
-    THEN the transcription and speech models match the selected mode."""
+    THEN speech preset selects transcription model."""
     instance = SpeechIO(client=client, mode=mode)
-    actual = (instance.stt_model, instance.tts_model)
-    expected = (stt, tts)
-    assert actual == expected
+    expected = stt
+    assert instance.stt_model == expected
+
+
+@pytest.mark.parametrize("mode,stt,tts", [(SpeechMode.FAST, "gpt-4o-mini-transcribe", "gpt-4o-mini-tts"), (SpeechMode.LEGACY, "whisper-1", "tts-1"), (SpeechMode.HIGH_QUALITY, "gpt-4o-transcribe", "gpt-4o-mini-tts")])
+def test_speech_preset_selects_synthesis_model(client, mode, stt, tts):
+    """GIVEN a speech mode.
+    WHEN the speech module is created.
+    THEN speech preset selects synthesis model."""
+    instance = SpeechIO(client=client, mode=mode)
+    expected = tts
+    assert instance.tts_model == expected
 
 
 @pytest.fixture
@@ -193,15 +265,25 @@ def search_request(web_search):
 
 
 @pytest.mark.asyncio
-async def test_web_search_returns_result_and_forwards_request(search_request):
+async def test_web_search_returns_text(search_request):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the request uses the specified tool and returns the search text."""
+    THEN web search returns text."""
     tool, web_search = search_request
     result = await web_search.web_search(input="question", model="gpt-4o", tools=[tool])
-    actual = (result, web_search.client.async_responses_create.await_args_list)
-    expected = ("search result", [mock_call(input="question", model="gpt-4o", tools=[tool.model_dump()])])
-    assert actual == expected
+    expected = "search result"
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_web_search_passes_tool(search_request):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN web search passes tool."""
+    tool, web_search = search_request
+    await web_search.web_search(input="question", model="gpt-4o", tools=[tool])
+    expected = [mock_call(input="question", model="gpt-4o", tools=[tool.model_dump()])]
+    assert web_search.client.async_responses_create.await_args_list == expected
 
 
 @pytest.fixture
@@ -224,15 +306,25 @@ async def test_web_search_chains_provider_error(search_failure):
 
 
 @pytest.mark.asyncio
-async def test_web_search_applies_tool_overrides(web_search):
+async def test_web_search_overrides_tool_type(web_search):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the request uses the specified tool values."""
+    THEN web search overrides tool type."""
     await web_search.web_search(input="question", tool_dict={"type": "custom_search", "search_context_size": "high"})
     tool = web_search.client.async_responses_create.await_args.kwargs["tools"][0]
-    actual = (tool["type"], tool["search_context_size"])
-    expected = ("custom_search", "high")
-    assert actual == expected
+    expected = "custom_search"
+    assert tool["type"] == expected
+
+
+@pytest.mark.asyncio
+async def test_web_search_overrides_context_size(web_search):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN web search overrides context size."""
+    await web_search.web_search(input="question", tool_dict={"type": "custom_search", "search_context_size": "high"})
+    tool = web_search.client.async_responses_create.await_args.kwargs["tools"][0]
+    expected = "high"
+    assert tool["search_context_size"] == expected
 
 
 @pytest.fixture
@@ -254,24 +346,55 @@ async def test_web_search_uses_client_method_signature(search_module):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("text", [None, ""])
-async def test_web_search_omits_only_none_input(web_search, text):
+async def test_web_search_retains_present_input(web_search, text):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the request omits absent input and retains empty text."""
+    THEN web search retains present input."""
     await web_search.web_search(input=text)
     kwargs = web_search.client.async_responses_create.await_args.kwargs
-    result = ("input" in kwargs, kwargs.get("input"))
-    expected = (text is not None, text)
+    expected = text is not None
+    assert ("input" in kwargs) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", [None, ""])
+async def test_web_search_retains_input_value(web_search, text):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN web search retains input value."""
+    await web_search.web_search(input=text)
+    kwargs = web_search.client.async_responses_create.await_args.kwargs
+    expected = text
+    assert kwargs.get("input") == expected
+
+
+@pytest.mark.asyncio
+async def test_default_search_returns_text(web_search):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN default search returns text."""
+    result = await web_search.web_search(input="question", tool_dict={})
+    expected = "search result"
     assert result == expected
 
 
 @pytest.mark.asyncio
-async def test_web_search_empty_overrides_selects_default_tool(web_search):
+async def test_default_search_uses_one_tool(web_search):
     """GIVEN a client and specified request options.
     WHEN the request operation is called.
-    THEN the request uses one default search tool."""
-    result = await web_search.web_search(input="question", tool_dict={})
+    THEN default search uses one tool."""
+    await web_search.web_search(input="question", tool_dict={})
     tools = web_search.client.async_responses_create.await_args.kwargs["tools"]
-    actual = (result, len(tools), tools[0]["type"])
-    expected = ("search result", 1, "web_search_preview")
-    assert actual == expected
+    expected = 1
+    assert len(tools) == expected
+
+
+@pytest.mark.asyncio
+async def test_default_search_selects_tool_type(web_search):
+    """GIVEN a client and specified request options.
+    WHEN the request operation is called.
+    THEN default search selects tool type."""
+    await web_search.web_search(input="question", tool_dict={})
+    tools = web_search.client.async_responses_create.await_args.kwargs["tools"]
+    expected = "web_search_preview"
+    assert tools[0]["type"] == expected
