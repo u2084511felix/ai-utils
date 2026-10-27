@@ -55,7 +55,6 @@ def test_zero_tokens_cost_nothing():
     assert calculate_token_cost("gpt-4o", 0) == 0
 
 
-@pytest.mark.xfail(strict=True, reason="Token cost divides by the per-million rate and scales twice instead of multiplying once")
 @pytest.mark.parametrize("inputs,outputs,cached,expected", [
     (1_000_000, 0, 0, 2.5), (0, 1_000_000, 0, 10),
     (0, 0, 1_000_000, 1.25), (1_000_000, 1_000_000, 1_000_000, 13.75),
@@ -64,7 +63,6 @@ def test_cost_matches_listed_rates(inputs, outputs, cached, expected):
     assert calculate_token_cost("gpt-4o", inputs, outputs, cached) == pytest.approx(expected)
 
 
-@pytest.mark.xfail(strict=True, reason="Price.convert incorrectly applies token scaling to per-million price values")
 def test_price_conversion_preserves_units_and_discount():
     price = Price(name="test", input=10, output=20, cached_input=None, discount=2)
     converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
@@ -74,8 +72,13 @@ def test_price_conversion_preserves_units_and_discount():
     assert converted.discount == 2
 
 
-@pytest.mark.xfail(strict=True, reason="Underlying token-cost arithmetic is incorrect")
 def test_cost_applies_discount_and_currency(monkeypatch):
     monkeypatch.setattr(pricing, "get_price", lambda model: Price(name=model, input=4, output=8, cached_input=None, discount=2))
     monkeypatch.setitem(pricing.FX_RATES, Currency.GBP, 2)
     assert calculate_token_cost("test", 1_000_000, currency="GBP") == pytest.approx(1)
+
+
+def test_price_conversion_rejects_zero_exchange_rate():
+    price = Price(name="test", input=10, output=20, cached_input=None)
+    with pytest.raises(ZeroDivisionError, match="cannot be zero"):
+        price.convert(currency="EUR", fx_rates={"EUR": 0})

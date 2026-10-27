@@ -118,3 +118,142 @@ def test_apply_diff_without_allowed_paths_does_nothing(tmp_path, capsys):
     diffs.apply_diff(item, [], {})
     assert not target.exists()
     assert "Path not found" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("operation", ["create_file", "delete_file"])
+def test_apply_diff_dispatches_file_operations(tmp_path, monkeypatch, operation):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "file.txt"
+    if operation == "delete_file":
+        target.write_text("existing")
+    item = SimpleNamespace(model_dump=lambda: {
+        "type": "apply_patch_call", "id": "call-id",
+        "operation": {"type": operation, "path": str(target), "diff": "+created"},
+    })
+    history = {}
+    diffs.apply_diff(item, [str(target)], history)
+    assert target.exists() is (operation == "create_file")
+    if target.exists():
+        assert target.read_text() == "created"
+    assert history == {}
+    assert not (tmp_path / "last_diffs.json").exists()
+
+
+def test_apply_diff_resolves_path_and_ignores_unrelated_items(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "file.txt"
+    target.write_text("old")
+    item = SimpleNamespace(model_dump=lambda: {
+        "type": "apply_patch_call", "id": "id",
+        "operation": {"type": "update_file", "path": "file.txt", "diff": "-old\n+new"},
+    })
+    history = {}
+    diffs.apply_diff(item, [str(target)], history)
+    assert target.read_text() == "new"
+    assert history == {"id": str(target)}
+    diffs.apply_diff(SimpleNamespace(model_dump=lambda: {"type": "message"}), [], history)
+    assert history == {"id": str(target)}
+
+
+def test_unknown_diff_operation_does_not_modify_files(tmp_path, capsys):
+    target = tmp_path / "file.txt"
+    target.write_text("original")
+    item = SimpleNamespace(model_dump=lambda: {
+        "type": "apply_patch_call", "id": "id", "operation": {"type": "unknown", "path": str(target)},
+    })
+    diffs.apply_diff(item, [str(target)], {})
+    assert target.read_text() == "original"
+    assert "Unknown diff operation" in capsys.readouterr().out
+
+
+def test_undo_failure_preserves_file_and_saved_diff(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "file.txt"
+    target.write_text("unrelated content")
+    diffs.save_last_diffs({"id": str(target)})
+    diffs.save_diff("id", "-old\n+new")
+    diffs.undo_last_diff()
+    assert target.read_text() == "unrelated content"
+    assert (tmp_path / "diff_tmp" / "id.txt").exists()
+    assert "Error while undoing diff" in capsys.readouterr().out
+
+
+def test_failed_operation_does_not_record_success(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "file.txt"
+    target.write_text("original")
+    item = SimpleNamespace(model_dump=lambda: {
+        "type": "apply_patch_call", "id": "id",
+        "operation": {"type": "update_file", "path": str(target), "diff": "-missing\n+new"},
+    })
+    history = {}
+    diffs.apply_diff(item, [str(target)], history)
+    assert target.read_text() == "original"
+    assert history == {}
+    assert not (tmp_path / "last_diffs.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_diffs_module_applies_provider_operations(client, monkeypatch, tmp_path):
+    from unittest.mock import AsyncMock
+    target = tmp_path / "created.txt"
+    item = SimpleNamespace(model_dump=lambda: {
+        "type": "apply_patch_call", "id": "id",
+        "operation": {"type": "create_file", "path": str(target), "diff": "+content"},
+    })
+    # Isolate operation dispatch with the raw response shape this method expects;
+    # the ClientReply boundary mismatch is tested separately below.
+    send = AsyncMock(return_value=SimpleNamespace(output=[item]))
+    monkeypatch.setattr(client, "async_responses_create", send)
+    module = diffs.Diffs(client=client, model="gpt-4o")
+    await module.apply_diff("create file", [str(target)], verbose=True)
+    assert target.read_text() == "content"
+    send.assert_awaited_once_with("create file", model="gpt-4o", verbose=True, tools=[{"type": "apply_patch"}])
+
+
+@pytest.mark.asyncio
+async def test_diffs_module_accepts_client_reply(client, monkeypatch):
+    from unittest.mock import AsyncMock
+    from aiutils.clients import ClientReply
+    monkeypatch.setattr(client, "async_responses_create", AsyncMock(return_value=ClientReply(response=SimpleNamespace(output=[]))))
+    await diffs.Diffs(client=client).apply_diff("no edits", [])
+
+
+def test_diffs_module_undo_uses_saved_history(client, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "file.txt"
+    target.write_text("new")
+    diffs.save_last_diffs({"id": str(target)})
+    diffs.save_diff("id", "-old\n+new")
+    diffs.Diffs(client=client).undo_last_diffs()
+    assert target.read_text() == "old"
+
+
+@pytest.mark.asyncio
+async def test_diffs_module_applies_wrapped_response(client, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "updated.txt"
+    target.write_text("old")
+    item = SimpleNamespace(model_dump=lambda: {
+        "type": "apply_patch_call", "id": "patch-1",
+        "operation": {"type": "update_file", "path": str(target), "diff": "-old\n+new"},
+    })
+    client.async_client.responses.create.return_value = SimpleNamespace(
+        output_text="", output=[item],
+        usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+    )
+    await diffs.Diffs(client=client, model="test").apply_diff("edit", [str(target)])
+    assert target.read_text() == "new"
+    assert diffs.load_last_diffs() == {"patch-1": str(target)}
+    diffs.undo_last_diff()
+    assert target.read_text() == "old"
+
+
+@pytest.mark.asyncio
+async def test_diffs_module_chains_provider_failure(client):
+    from aiutils.exceptions import ClientError
+    error = RuntimeError("provider unavailable")
+    client.async_client.responses.create.side_effect = error
+    with pytest.raises(ClientError) as exc:
+        await diffs.Diffs(client=client).apply_diff("edit", [])
+    assert exc.value.__cause__ is error

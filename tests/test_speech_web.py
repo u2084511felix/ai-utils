@@ -72,7 +72,6 @@ async def test_audio_provider_errors_propagate(speech):
     assert exc.value is error
 
 
-@pytest.mark.xfail(strict=True, reason="Pydantic does not invoke the dataclass __post_init__ that selects speech presets")
 @pytest.mark.parametrize("mode,stt,tts", [
     (SpeechMode.FAST, "gpt-4o-mini-transcribe", "gpt-4o-mini-tts"),
     (SpeechMode.LEGACY, "whisper-1", "tts-1"),
@@ -93,6 +92,66 @@ def test_search_tool_location_and_independent_defaults():
     assert second.tools == []
 
 
-@pytest.mark.xfail(strict=True, raises=AttributeError, reason="WebSearch dataclass constructor bypasses Pydantic initialization")
 def test_web_search_can_be_constructed(client):
     assert WebSearch(client=client).client is client
+
+
+@pytest.fixture
+def web_search(client, monkeypatch):
+    from unittest.mock import AsyncMock
+    from aiutils.clients import ClientReply
+    monkeypatch.setattr(client, "async_responses_create", AsyncMock(return_value=ClientReply(content="search result")))
+    # Bypass the known dataclass-constructor defect to exercise request handling.
+    # test_web_search_can_be_constructed continues to cover that defect.
+    return WebSearch.model_construct(client=client)
+
+
+@pytest.mark.asyncio
+async def test_web_search_returns_result_and_forwards_request(web_search):
+    tool = SearchTools(search_context_size="low")
+    assert await web_search.web_search(input="question", model="gpt-4o", tools=[tool]) == "search result"
+    web_search.client.async_responses_create.assert_awaited_once_with(
+        input="question", model="gpt-4o", tools=[tool.model_dump()],
+    )
+
+
+@pytest.mark.asyncio
+async def test_web_search_chains_provider_error(web_search):
+    from aiutils.clients import ClientReply
+    from aiutils.exceptions import ClientError
+    error = RuntimeError("search failed")
+    web_search.client.async_responses_create.return_value = ClientReply(error=error)
+    with pytest.raises(ClientError) as exc:
+        await web_search.web_search(input="question")
+    assert exc.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+async def test_web_search_applies_tool_overrides(web_search):
+    await web_search.web_search(input="question", tool_dict={"type": "custom_search", "search_context_size": "high"})
+    tool = web_search.client.async_responses_create.await_args.kwargs["tools"][0]
+    assert tool["type"] == "custom_search"
+    assert tool["search_context_size"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_web_search_uses_client_method_signature(client):
+    module = WebSearch.model_construct(client=client)
+    assert await module.web_search(input="question") == "hello"
+
+
+def test_clean_model_excludes_only_none_values():
+    from aiutils.modules.web import _clean_pydantic_model
+    model = WebSearchResponsesModel(input="")
+    cleaned = _clean_pydantic_model(model)
+    assert cleaned["input"] == ""
+    assert cleaned["tools"] == []
+    assert "input" not in _clean_pydantic_model(WebSearchResponsesModel())
+
+
+@pytest.mark.asyncio
+async def test_web_search_empty_overrides_selects_default_tool(web_search):
+    assert await web_search.web_search(input="question", tool_dict={}) == "search result"
+    tools = web_search.client.async_responses_create.await_args.kwargs["tools"]
+    assert len(tools) == 1
+    assert tools[0]["type"] == "web_search_preview"

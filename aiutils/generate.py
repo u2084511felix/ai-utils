@@ -60,6 +60,7 @@ class Generate(GPTModule):
             else:
                 self.reasoning_effort = reasoning_effort
         else:
+            self.reasoning_effort = None
             self.temperature = temperature or 0
 
 

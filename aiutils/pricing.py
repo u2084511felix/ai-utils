@@ -81,13 +81,12 @@ def _scale_down(value):
     """Scale the value back down after avoiding floating point errors."""
     return value / __PER_MILLION
 
-def _calc_price(tokens, rate) -> int:
+def _calc_price(tokens, rate) -> float:
     if tokens is None or rate is None:
         return 0
     if tokens == 0 or rate == 0:
         return 0
-    token_rate = _scale_up(tokens) / rate
-    return _scale_down(token_rate) / __PER_MILLION
+    return tokens * rate / __PER_MILLION
 
 
 class Price(BaseModel):
@@ -120,9 +119,10 @@ class Price(BaseModel):
 
         return Price(
             name=self.name,
-            input=_calc_price(self.input, rate),
-            cached_input=_calc_price(self.cached_input, rate),
-            output=_calc_price(self.output, rate),
+            input=self.input / rate,
+            cached_input=None if self.cached_input is None else self.cached_input / rate,
+            output=self.output / rate,
+            discount=self.discount,
         )
 
 
@@ -179,7 +179,7 @@ def calculate_token_cost(
         _calc_price(cached_input_tokens, price.cached_input)
     )
     total /= price.discount
-    return convert(total, currency=curr) / __PER_MILLION
+    return convert(total, currency=curr)
 
 
 def convert(

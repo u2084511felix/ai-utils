@@ -274,7 +274,7 @@ async def structured_outputs_generator(
     system_msg="default", 
     input_type='json', 
     module_name='', 
-    params={}, 
+    params=None,
     model='', 
     vendor='openai',
     client=make_client()
@@ -294,16 +294,16 @@ async def structured_outputs_generator(
     else:
         sys_msg = system_msg
 
-    if (params is {}):
-        generate = make_generate(max_tokens=max_tokens, system_message=sys_msg)
+    if not params:
+        generate = make_generate(max_tokens=max_tokens, client=client)
     else:
         generate = make_generate(**params)
 
     try:
         if model != '':
-            client_reply = await generate.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
+            client_reply = await generate.structured_output(sys_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
         else:
-            client_reply = await generate.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
+            client_reply = await generate.structured_output(sys_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
 
     except Exception as e:
         return e

@@ -16,6 +16,7 @@ def encoding(monkeypatch):
     tokenizer.decode.side_effect = lambda tokens: "".join(tokens)
     lookup = Mock(return_value=tokenizer)
     monkeypatch.setattr(embeddings.tiktoken, "encoding_for_model", lookup)
+    monkeypatch.setattr(embeddings.tiktoken, "get_encoding", lookup)
     return tokenizer
 
 
@@ -54,10 +55,15 @@ async def test_unknown_embedding_model_rejected():
     client.make_embeddings.assert_not_awaited()
 
 
-@pytest.mark.xfail(strict=True, raises=KeyError, reason="get_token_count passes an encoding name to encoding_for_model")
 def test_token_count_uses_named_encoding(monkeypatch):
     def encoding_for_model(model):
         raise KeyError(model)
     monkeypatch.setattr(embeddings.tiktoken, "encoding_for_model", encoding_for_model)
     monkeypatch.setattr(embeddings.tiktoken, "get_encoding", lambda name: Mock(encode=lambda text: list(text)))
     assert embeddings.get_token_count("abc") == 3
+
+
+@pytest.mark.parametrize("text,expected", [("", 0), ("abc", 3), ("café", 4)])
+def test_token_count_counts_encoder_output(encoding, text, expected):
+    assert embeddings.get_token_count(text) == expected
+    encoding.encode.assert_called_once_with(text)

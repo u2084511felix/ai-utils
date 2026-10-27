@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from pydantic import Field
 
 from ..clients import make_client, Client
 from .gpt_module import GPTModule
@@ -20,21 +20,25 @@ class SpeechIO(GPTModule):
     tts_voice: str = "nova"
     tts_format: str = "mp3"
 
-    stt_model: str = field(init=False)
-    tts_model: str = field(init=False)
-    client: Client = field(default_factory=make_client)
+    stt_model: str = AudioModels.gpt_4o_transcribe
+    tts_model: str = AudioModels.gpt_4o_mini_tts
+    client: Client = Field(default_factory=make_client)
 
-    def __post_init__(self):
+    def model_post_init(self, context):
         match self.mode:
             case SpeechMode.FAST:
-                self.stt_model = AudioModels.gpt_4o_mini_transcribe
-                self.tts_model = AudioModels.gpt_4o_mini_tts
+                stt_model = AudioModels.gpt_4o_mini_transcribe
+                tts_model = AudioModels.gpt_4o_mini_tts
             case SpeechMode.LEGACY:
-                self.stt_model = AudioModels.whisper
-                self.tts_model = AudioModels.tts
+                stt_model = AudioModels.whisper
+                tts_model = AudioModels.tts
             case _:
-                self.stt_model = AudioModels.gpt_4o_transcribe
-                self.tts_model = AudioModels.gpt_4o_mini_tts
+                stt_model = AudioModels.gpt_4o_transcribe
+                tts_model = AudioModels.gpt_4o_mini_tts
+        if "stt_model" not in self.model_fields_set:
+            self.stt_model = stt_model
+        if "tts_model" not in self.model_fields_set:
+            self.tts_model = tts_model
 
     async def transcribe(
         self,

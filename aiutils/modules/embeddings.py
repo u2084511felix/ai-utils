@@ -27,7 +27,7 @@ def truncate_to_token_limit(
 
 
 def get_token_count(text):
-    encoding = tiktoken.encoding_for_model(ENCODING_NAME)
+    encoding = tiktoken.get_encoding(ENCODING_NAME)
     return len(encoding.encode(text))
 
 

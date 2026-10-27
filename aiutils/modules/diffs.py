@@ -7,8 +7,8 @@ from enum import StrEnum
 from pathlib import Path, PurePosixPath
 
 
-from ..exceptions import V4APatchError
-from ..clients import Client, make_client
+from ..exceptions import ClientError, V4APatchError
+from ..clients import Client, ClientReply, make_client
 from .gpt_module import GPTModule
 
 
@@ -293,6 +293,7 @@ def apply_diff(item, filepaths, last_diffs):
                     apply_patch(path, diff)
                 except Exception as e:
                     print(f"Error while applying patch: {e}")
+                    return
 
                 last_diffs[id] = path
                 save_diff(id, diff)
@@ -312,6 +313,12 @@ class Diffs(GPTModule):
     _tools: dict[str, list] = {"apply_patch": [{"type": "apply_patch"}]}
 
     def _response_output_items(self, response):
+        if isinstance(response, ClientReply):
+            if response.error:
+                raise ClientError from response.error
+            response = response.response
+            if response is None:
+                raise ClientError("No response received from the model.")
         for item in response.output:
             yield item
 

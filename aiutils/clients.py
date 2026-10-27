@@ -103,12 +103,13 @@ def _get_usage(response: APIResponse | AsyncAPIResponse) -> TokenUsage:
     usage = getattr(response, "usage", None)
     if usage is None:
         raise RuntimeError("The model provider did not report token usage.")
-    details = getattr(usage, "completion_tokens_details", None)
+    is_responses = hasattr(usage, "input_tokens")
+    details = getattr(usage, "output_tokens_details" if is_responses else "completion_tokens_details", None)
     reasoning = getattr(details, "reasoning_tokens", 0) if details is not None else 0
     return TokenUsage(
-        input_tokens=int(usage.prompt_tokens),
-        output_tokens=int(usage.completion_tokens),
-        reasoning_tokens=int(reasoning),
+        input_tokens=int(usage.input_tokens if is_responses else usage.prompt_tokens),
+        output_tokens=int(usage.output_tokens if is_responses else usage.completion_tokens),
+        reasoning_tokens=int(reasoning or 0),
     )
 
 
@@ -127,12 +128,19 @@ def _parse_response(response):
         #     error = RuntimeError(f"Unexpected response type, {type(response).__name__}.")
         #     return ClientReply(error=error)
 
-    choices = response.choices[0]
+    if hasattr(response, "output"):
+        return ClientReply(
+            content=getattr(response, "output_text", ""),
+            usage=_get_usage(response),
+            response=response,
+        )
+
+    choices = getattr(response, "choices", None)
     if not choices:
         error = RuntimeError("No choices returned from the model.")
-        return ClientReply(error=error)
+        return ClientReply(error=error, response=response)
 
-    response_msg = choices.message
+    response_msg = choices[0].message
     if response_msg.tool_calls:
         print("\n\nfunction call detected.\n\n")
         content = response_msg.tool_calls
@@ -145,7 +153,8 @@ def _parse_response(response):
     return ClientReply(
         content=content, 
         usage=_get_usage(response),
-        error=error
+        error=error,
+        response=response,
     )
 
 
@@ -181,7 +190,13 @@ class Client:
             raise RuntimeError(f"Async client not available for {vendor}.")
 
 
-    def responses_create(self, prompt, *, model, tools=None, verbose=False, **kwargs):
+    def responses_create(self, prompt=None, *, model, tools=None, verbose=False, **kwargs):
+        if "input" in kwargs:
+            if prompt is not None:
+                raise TypeError("Supply either prompt or input, not both.")
+            prompt = kwargs.pop("input")
+        if tools is not None:
+            kwargs["tools"] = tools
         response = None
         try:
             response = self.client.responses.create(
@@ -196,7 +211,13 @@ class Client:
         return _parse_response(response)
 
 
-    async def async_responses_create(self, prompt, *, model, tools=None, verbose=False, **kwargs):
+    async def async_responses_create(self, prompt=None, *, model, tools=None, verbose=False, **kwargs):
+        if "input" in kwargs:
+            if prompt is not None:
+                raise TypeError("Supply either prompt or input, not both.")
+            prompt = kwargs.pop("input")
+        if tools is not None:
+            kwargs["tools"] = tools
         response = None
         try:
             response = await self.async_client.responses.create(

@@ -21,6 +21,7 @@ packages = [{include = "aiutils"}]
 pytest = "^8.3.5"
 pytest-asyncio = "*"
 pytest-cov = "*"
+pre-commit = ">=4.0,<5.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -28,6 +29,10 @@ pythonpath = ["."]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra"
+
+[tool.coverage.run]
+source = ["aiutils"]
+branch = true
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

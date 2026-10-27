@@ -1,4 +1,3 @@
-import os
 from jinja2 import Template
 from pathlib import Path
 
@@ -19,7 +18,9 @@ class PromptEngine():
     def set_template_prompt(self, filepath="default"):
 
         if filepath == "default":
-            self.filepath = os.path.join(os.path.dirname(__file__), "custom_templates/prompt_template.j2")
+            self.filepath = Path(__file__).resolve().parent.parent / "custom_templates/prompt_template.j2"
+        else:
+            self.filepath = filepath
 
         self.prompt = Template(Path(self.filepath).read_text(encoding="utf-8")).render(kwargs=self.kwargs)
 

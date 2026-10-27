@@ -94,7 +94,6 @@ def test_usage_without_reasoning_details(response_factory):
     assert clients._get_usage(response).reasoning_tokens == 0
 
 
-@pytest.mark.xfail(strict=True, raises=IndexError, reason="Empty choices are indexed before checking for an empty list")
 def test_empty_choices_returns_error(response_factory):
     response = response_factory()
     response.choices = []
@@ -187,10 +186,131 @@ async def test_responses_errors(client):
     assert (await client.async_responses_create("hi", model="test")).error is error
 
 
-@pytest.mark.xfail(strict=True, raises=AttributeError, reason="Responses API output is parsed as a Chat Completions response")
 def test_responses_api_text(client):
     client.client.responses.create.return_value = SimpleNamespace(
         output_text="hello", output=[],
         usage=SimpleNamespace(input_tokens=10, output_tokens=5),
     )
     assert client.responses_create("hi", model="gpt-4o").content == "hello"
+
+
+@pytest.mark.parametrize("method", ["chat_completions", "chat_completions_body"])
+def test_sync_chat_verbose_logs_provider_response(client, method):
+    client.logger = Mock()
+    response = client.client.chat.completions.create.return_value
+    assert getattr(client, method)({}, verbose=True).error is None
+    client.logger.debug.assert_called_once_with(response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["async_chat_completions", "async_chat_completions_body"])
+async def test_async_chat_verbose_logs_provider_response(client, method):
+    client.logger = Mock()
+    response = client.async_client.chat.completions.create.return_value
+    assert (await getattr(client, method)({}, verbose=True)).error is None
+    client.logger.debug.assert_called_once_with(response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_forwards_options_and_logs_dump(client, response_factory, asynchronous):
+    # Isolate request forwarding; the real Responses parsing defect has its own
+    # regression test above.
+    response = response_factory()
+    response.model_dump = Mock(return_value={"id": "response-id"})
+    client.logger = Mock()
+    if asynchronous:
+        create = client.async_client.responses.create
+        create.return_value = response
+        reply = await client.async_responses_create("question", model="test", temperature=0.2, verbose=True)
+        create.assert_awaited_once_with(input="question", model="test", temperature=0.2)
+    else:
+        create = client.client.responses.create
+        create.return_value = response
+        reply = client.responses_create("question", model="test", temperature=0.2, verbose=True)
+        create.assert_called_once_with(input="question", model="test", temperature=0.2)
+    assert reply.content == "hello"
+    client.logger.debug.assert_called_once_with({"id": "response-id"})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_forwards_tools(client, response_factory, asynchronous):
+    tools = [{"type": "web_search_preview"}]
+    client.client.responses.create.return_value = response_factory()
+    if asynchronous:
+        await client.async_responses_create("q", model="test", tools=tools)
+        create = client.async_client.responses.create
+    else:
+        client.responses_create("q", model="test", tools=tools)
+        create = client.client.responses.create
+    assert create.call_args.kwargs.get("tools") == tools
+
+
+@pytest.mark.parametrize("sync_missing", [True, False])
+def test_set_vendor_rejects_unavailable_clients(monkeypatch, client, sync_missing):
+    monkeypatch.setattr(clients, "make_openai_client", lambda: None if sync_missing else client.client)
+    monkeypatch.setattr(clients, "make_async_openai_client", lambda: client.async_client if sync_missing else None)
+    with pytest.raises(RuntimeError, match="Sync client" if sync_missing else "Async client"):
+        client.set_vendor("openai")
+
+
+def test_invalid_vendor_does_not_replace_clients(client):
+    original_sync, original_async = client.client, client.async_client
+    with pytest.raises(ValueError):
+        client.set_vendor("unknown")
+    assert client.client is original_sync
+    assert client.async_client is original_async
+
+
+def test_make_client_wraps_constructor_error(monkeypatch, client):
+    error = RuntimeError("setup failed")
+    monkeypatch.setattr(clients, "Client", Mock(side_effect=error))
+    with pytest.raises(InitializationError, match="setup failed") as exc:
+        clients.make_client(client=client.client, async_client=client.async_client)
+    assert exc.value.__cause__ is error
+
+
+def test_usage_handles_explicitly_absent_completion_details(response_factory):
+    response = response_factory()
+    response.usage.completion_tokens_details = None
+    assert clients._get_usage(response).reasoning_tokens == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_preserves_output_usage_and_accepts_input(client, asynchronous):
+    operation = SimpleNamespace(type="apply_patch_call", id="patch-1")
+    response = SimpleNamespace(
+        output_text="", output=[operation],
+        usage=SimpleNamespace(
+            input_tokens=10, output_tokens=5,
+            output_tokens_details=SimpleNamespace(reasoning_tokens=3),
+        ),
+    )
+    sdk = client.async_client if asynchronous else client.client
+    sdk.responses.create.return_value = response
+    tools = [{"type": "apply_patch"}]
+    if asynchronous:
+        reply = await client.async_responses_create(input="edit", model="test", tools=tools)
+    else:
+        reply = client.responses_create(input="edit", model="test", tools=tools)
+    sdk.responses.create.assert_called_once_with(input="edit", model="test", tools=tools)
+    assert reply.error is None
+    assert reply.response is response
+    assert reply.response.output == [operation]
+    assert reply.usage.input_tokens == 10
+    assert reply.usage.output_tokens == 5
+    assert reply.usage.reasoning_tokens == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_responses_rejects_ambiguous_input(client, asynchronous):
+    with pytest.raises(TypeError, match="either prompt or input"):
+        if asynchronous:
+            await client.async_responses_create("first", input="second", model="test")
+        else:
+            client.responses_create("first", input="second", model="test")
+    client.client.responses.create.assert_not_called()
+    client.async_client.responses.create.assert_not_called()

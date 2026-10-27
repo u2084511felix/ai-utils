@@ -70,7 +70,6 @@ def test_jinja_prompt_from_configured_file(tmp_path):
     assert engine.prompt == "one two "
 
 
-@pytest.mark.xfail(strict=True, raises=FileNotFoundError, reason="Default template path points inside modules instead of the package template directory")
 def test_default_jinja_template():
     engine = PromptEngine()
     engine.kwargs = {"task": "Update the function"}

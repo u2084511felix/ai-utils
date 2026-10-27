@@ -151,9 +151,41 @@ def test_factory_applies_options_and_wraps_errors(client):
     assert isinstance(exc.value.__cause__, ValueError)
 
 
-@pytest.mark.xfail(strict=True, reason="Changing from reasoning to instruct models leaves stale reasoning_effort")
 @pytest.mark.asyncio
 async def test_switching_models_clears_reasoning_settings(generator):
     await generator.generate("s", "p", model="gpt-5.2")
     await generator.generate("s", "p", model="gpt-4o")
     assert "reasoning_effort" not in generator.request_body
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("assistant", [None, "previous"])
+async def test_structured_debug_logs_response_and_context(generator, assistant):
+    from unittest.mock import Mock
+    generator.logger = Mock()
+    reply = await generator.structured_output("s", "p", schema="{}", assistant_response=assistant, debug=True)
+    generator.logger.debug.assert_any_call(reply)
+    assert generator.logger.debug.call_count == (1 if assistant is None else 2)
+
+
+@pytest.mark.asyncio
+async def test_pydantic_schema_can_be_loaded_from_module(generator, tmp_path, monkeypatch):
+    import sys
+    module_name = "pytest_generated_schema"
+    (tmp_path / f"{module_name}.py").write_text("from pydantic import BaseModel\nclass Result(BaseModel):\n    value: str\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    # Restore the import registry even if the test fails.
+    with monkeypatch.context() as scoped:
+        scoped.setitem(sys.modules, module_name, None)
+        scoped.delitem(sys.modules, module_name)
+        await generator.structured_output("s", "p", schema="Result", input_type="pydantic", module_name=module_name)
+        assert generator.response_format.__name__ == "Result"
+        assert generator.response_format(value="answer").value == "answer"
+        assert generator.request_body["response_format"] is generator.response_format
+
+
+@pytest.mark.asyncio
+async def test_missing_schema_module_does_not_call_provider(generator):
+    with pytest.raises(ModuleNotFoundError):
+        await generator.structured_output("s", "p", schema="Result", input_type="pydantic", module_name="nonexistent_aiutils_schema_module")
+    generator.client.async_chat_completions_body.assert_not_awaited()
