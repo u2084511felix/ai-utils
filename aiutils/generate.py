@@ -264,10 +264,7 @@ def make_generate(
         InitializationError: If the Generate instance could not be initialized successfully.
     """
     try:
-        module = Generate(
-            client=client,
-            logger=logger,
-        )
+        module = Generate(client=client, logger=logger)
         _ = [setattr(module, k, v) for k, v in kwargs.items()]
         return module
     except Exception as e:

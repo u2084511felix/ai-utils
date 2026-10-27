@@ -3,7 +3,7 @@ from jinja2 import Template
 from pathlib import Path
 
 
-from .modules.diffs import Diff
+from .diffs import Diffs
 
 
 class PromptEngine():
@@ -42,12 +42,11 @@ class Refactor():
             return f.read()
 
     def undo_diffs(self):
-        generator = Generate()
-        generator.undo_last_diffs()
+        diffs = Diffs()
+        diffs.undo_last_diffs()
 
 
     async def refactor_script(self):
-        generator = Generate()
-
+        diffs = Diffs()
         print(f"Generating diff ...")
-        await generator.apply_diff(self.prompt_engine.prompt, self.target_file_paths, verbose=self.verbose)
+        await diffs.apply_diff(self.prompt_engine.prompt, self.target_file_paths, verbose=self.verbose)

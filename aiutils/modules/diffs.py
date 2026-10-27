@@ -1,13 +1,10 @@
 
-from enum import StrEnum
-from dataclasses import dataclass
-import os
 import json
-from pathlib import Path, PurePosixPath
+import os
 import posixpath
 from difflib import SequenceMatcher
-
-
+from enum import StrEnum
+from pathlib import Path, PurePosixPath
 
 
 from ..exceptions import V4APatchError
@@ -310,14 +307,9 @@ def apply_diff(item, filepaths, last_diffs):
                 print(f"Unknown diff operation type: {diff_type}")
 
 
-@dataclass
 class Diffs(GPTModule):
     client: Client = make_client()
-
-    def __post_init__(self):
-        self._tools = {
-            "apply_patch": [{"type": "apply_patch"}]
-        }
+    _tools: dict[str, list] = {"apply_patch": [{"type": "apply_patch"}]}
 
     def _response_output_items(self, response):
         for item in response.output:

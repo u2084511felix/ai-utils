@@ -46,7 +46,7 @@ def _send_func_call_args_to_available_funcs(
         raise e
 
 
-@dataclass
+
 class FunctionCall(GPTModule):
     client: Client = make_client()
 

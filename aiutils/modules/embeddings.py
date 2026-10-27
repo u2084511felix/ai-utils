@@ -1,4 +1,3 @@
-from openai import OpenAI
 import tiktoken
 
 
@@ -7,13 +6,13 @@ from ..models import EmbeddingModels
 from ..exceptions import ClientError
 
 
-encoding_name = 'cl100k_base'
+ENCODING_NAME = 'cl100k_base'
 
 
 def truncate_to_token_limit(
-  text: str, 
-  model: str,
-  max_tokens: int = 8191
+    text: str, 
+    model: str,
+    max_tokens: int = 8191
 ):
     encoding = tiktoken.encoding_for_model(model)
     tokens = encoding.encode(text)
@@ -28,7 +27,7 @@ def truncate_to_token_limit(
 
 
 def get_token_count(text):
-    encoding = tiktoken.encoding_for_model(encoding_name)
+    encoding = tiktoken.encoding_for_model(ENCODING_NAME)
     return len(encoding.encode(text))
 
 
@@ -38,7 +37,7 @@ async def get_embedding(
     model=EmbeddingModels.LARGE, 
     dimensions=3072, 
     encoding_format="float"
-  ) -> list[float]:
+) -> list[float]:
     """
     Response object:
     {

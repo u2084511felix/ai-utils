@@ -5,10 +5,10 @@ import os
 import subprocess
 
 
-from .clients import make_async_openai_client, make_client
-from .exceptions import ClientError
-from .modules.function_call import FunctionCall
-from .generate import make_generate
+from ..clients import make_async_openai_client, make_client
+from ..exceptions import ClientError
+from .function_call import FunctionCall
+from ..generate import make_generate
 
 
 def run_script_action(action):
@@ -295,15 +295,15 @@ async def structured_outputs_generator(
         sys_msg = system_msg
 
     if (params is {}):
-        module = make_generate(max_tokens=max_tokens, system_message=sys_msg)
+        generate = make_generate(max_tokens=max_tokens, system_message=sys_msg)
     else:
-        module = make_generate(**params)
+        generate = make_generate(**params)
 
     try:
         if model != '':
-            client_reply = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
+            client_reply = await generate.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
         else:
-            client_reply = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
+            client_reply = await generate.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
 
     except Exception as e:
         return e

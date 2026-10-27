@@ -15,7 +15,6 @@ class SpeechMode(StrEnum):
     LEGACY = "legacy"               # whisper-1 + tts-1
 
 
-@dataclass
 class SpeechIO(GPTModule):
     mode: SpeechMode = SpeechMode.HIGH_QUALITY
     tts_voice: str = "nova"
