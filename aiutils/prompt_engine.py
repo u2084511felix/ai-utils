@@ -1,13 +1,13 @@
-from __future__ import annotations
 import os
-from aiutils import TextModels
-from aiutils.openai_config import Generate
 from jinja2 import Template
-from typing import get_args
 from pathlib import Path
 
 
+from .modules.diffs import Diff
+
+
 class PromptEngine():
+
     def __init__(self):
         self.prompt = ""
         self.filepath = ""

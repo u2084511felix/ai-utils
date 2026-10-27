@@ -3,8 +3,8 @@
 class BudgetExceededError(RuntimeError):
     """The run cannot start another model call within its spend limit."""
 
-class ClientInstantiationError(RuntimeError):
-    """Raised when there is an error instantiating a client."""
+class ClientError(RuntimeError):
+    """Raised when there is an error using a client."""
 
 class InitializationError(RuntimeError):
     """Raised when there is an error during initialization."""

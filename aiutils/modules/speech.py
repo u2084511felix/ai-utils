@@ -1,14 +1,11 @@
-# MARK: Audio Models
-
-
-
-from enum import StrEnum
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 
-from .models import AudioModels, Vendor
-from .clients import make_client
+from ..clients import make_client, Client
+from .gpt_module import GPTModule
+from ..models import AudioModels
 
 
 class SpeechMode(StrEnum):
@@ -19,14 +16,14 @@ class SpeechMode(StrEnum):
 
 
 @dataclass
-class SpeechIO:
+class SpeechIO(GPTModule):
     mode: SpeechMode = SpeechMode.HIGH_QUALITY
     tts_voice: str = "nova"
     tts_format: str = "mp3"
 
     stt_model: str = field(init=False)
     tts_model: str = field(init=False)
-    client: Any = field(default_factory=lambda: make_client(Vendor.OPENAI))
+    client: Client = field(default_factory=make_client)
 
     def __post_init__(self):
         match self.mode:
@@ -63,7 +60,7 @@ class SpeechIO:
         except Exception:
             pass
 
-        result = self.client.audio.transcriptions.create(**params)
+        result = self.client.client.audio.transcriptions.create(**params)
 
         if isinstance(result, str):
             return result
@@ -90,6 +87,8 @@ class SpeechIO:
         Returns:
             bytes: Raw audio bytes suitable for base64 encoding.
         """
+
+
         params = {
             "model": self.tts_model,
             "voice": voice or self.tts_voice,
@@ -98,7 +97,7 @@ class SpeechIO:
         }
         params.update(kwargs)
 
-        audio_resp = self.client.audio.speech.create(**params)
+        audio_resp = self.client.client.audio.speech.create(**params)
 
         # This is the key: read bytes from the response object
         if hasattr(audio_resp, "read"):

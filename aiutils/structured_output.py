@@ -1,23 +1,24 @@
-import re
 import ast
-from typing import Any, Set, Dict, Tuple, List, Optional, Union, Type
-from pydantic import BaseModel, create_model, Field
-from aiutils.openai_config import Generate, TextModels, cclient, make_generate
+import inspect
 import json
 import os
-import inspect
-import sys
 import subprocess
 
 
-from .clients import make_openai_client
-import pdb
+from .clients import make_async_openai_client, make_client
+from .exceptions import ClientError
+from .modules.function_call import FunctionCall
+from .generate import make_generate
 
 
 def run_script_action(action):
-    os.system(action)
-    # subprocess.run(action, shell=True, check=True,
-    #                text=True, capture_output=True)
+    subprocess.run(
+        action, 
+        shell=True,
+        check=True,
+        text=True, 
+        capture_output=True
+    )
 
 
 def get_caller_script_dir():
@@ -53,7 +54,7 @@ async def legacy_structured_output(prompt, schema, system_msg="default") -> str:
     else:
         system_message = system_msg
 
-    LegacyStructuredOutput = Generate()
+    LegacyStructuredOutput = FunctionCall()
     new_schema = json.loads(schema)
 
     function_name = new_schema.get("name")
@@ -67,23 +68,27 @@ async def legacy_structured_output(prompt, schema, system_msg="default") -> str:
         }
     ]
 
-    legacy_structured_output = await LegacyStructuredOutput.function_call_legacy_structured_output(system_message, prompt)
+    client_reply = await LegacyStructuredOutput.function_call_legacy_structured_output(system_message, prompt)
+    if client_reply.error:
+        raise ClientError from client_reply.error
+    if client_reply.response is None:
+        raise ClientError("No response received from the client.")
 
-    legacy_structured_output = legacy_structured_output[0].function.arguments
-    output_json = json.loads(legacy_structured_output)
+    client_reply = client_reply.response.output[0].function.arguments
+    output_json = json.loads(client_reply)
     
     #save_json_file(output_json, "finaloutput.json")
     
-    return legacy_structured_output
+    return client_reply
 
 
 async def generate_legacy_structured_output_schema(json_object, system_msg="default") -> str:
     """Returns a JSON string"""
 
     transform_prompt = "Transform this JSON object: " + str(json_object)
-    SchemaGenerator = Generate()
+    SchemaGenerator = FunctionCall()
 
-    if (system_msg == "default"):
+    if system_msg == "default":
         sys_msg = f"""Generate a JSON schema for the given instruction converting from an existing data model outline, using the function."""
 
     else:
@@ -140,9 +145,9 @@ async def generate_legacy_structured_output_schema(json_object, system_msg="defa
     SchemaGenerator.tool_choice = {
         "type": "function", "function": {"name": "Tool_Schema"}}
 
-    generated_schema = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
+    client_reply = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
 
-    generated_schema = generated_schema[0].function.arguments
+    generated_schema = client_reply.response.output[0].function.arguments
     output_json = json.loads(generated_schema)
 
     # if debug:
@@ -156,9 +161,9 @@ async def generate_structured_output_schema(json_object, system_msg="default") -
     """Returns a JSON string"""
 
     transform_prompt = "Transform this JSON object: " + str(json_object)
-    SchemaGenerator = Generate()
+    SchemaGenerator = FunctionCall()
 
-    if (system_msg == "default"):
+    if system_msg == "default":
         sys_msg = f"""Generate a JSON schema for the given instruction converting from an existing data model outline, using the function."""
 
     else:
@@ -194,7 +199,7 @@ async def generate_structured_output_schema(json_object, system_msg="default") -
                                             "oneOf": [
                                                 {
                                                     "name": {
-                                                        "decription": "The named schema object for one element of the content model. Maximum nesting of 5.",
+                                                        "description": "The named schema object for one element of the content model. Maximum nesting of 5.",
                                                         "type": "object",
                                                         "oneOf": [
                                                             {
@@ -253,9 +258,9 @@ async def generate_structured_output_schema(json_object, system_msg="default") -
     SchemaGenerator.tool_choice = {
         "type": "function", "function": {"name": "Tool_Schema"}}
 
-    generated_schema = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
+    client_reply = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
 
-    generated_schema = generated_schema[0].function.arguments
+    generated_schema = client_reply.response.output[0].function.arguments
 
     output_json = json.loads(generated_schema)
     #save_json_file(output_json, "schema_output.json")
@@ -263,9 +268,18 @@ async def generate_structured_output_schema(json_object, system_msg="default") -
     return generated_schema
 
 
-async def structured_outputs_generator(transform_prompt, schema, system_msg="default", input_type='json', module_name='', params={}, model='', vendor='openai'):
-
-    cclient.set_vendor(vendor)
+async def structured_outputs_generator(
+    transform_prompt, 
+    schema, 
+    system_msg="default", 
+    input_type='json', 
+    module_name='', 
+    params={}, 
+    model='', 
+    vendor='openai',
+    client=make_client()
+):
+    client.set_vendor(vendor)
 
     if vendor == 'google':
         max_tokens = 65536
@@ -275,28 +289,29 @@ async def structured_outputs_generator(transform_prompt, schema, system_msg="def
         else:
             max_tokens = 32768
 
-    if (system_msg == "default"):
+    if system_msg == "default":
         sys_msg = f"""Generate a JSON schema for the given content model."""
     else:
         sys_msg = system_msg
 
     if (params is {}):
-        module = make_generate(
-            max_tokens=max_tokens, system_message=sys_msg)
-
+        module = make_generate(max_tokens=max_tokens, system_message=sys_msg)
     else:
         module = make_generate(**params)
 
     try:
         if model != '':
-            structured_output = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
+            client_reply = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
         else:
-            structured_output = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
+            client_reply = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
 
     except Exception as e:
         return e
 
-    output_json = json.loads(structured_output)
+    if client_reply.error:
+        raise ClientError from client_reply.error
+
+    output_json = json.loads(client_reply.content)
     #save_json_file(output_json, "latest_structured_outout.json")
     return output_json
 
@@ -342,9 +357,9 @@ def reformat_generated_schema(schema_object, input_file, output_model_filepath):
     return (pydantic_model_generator(input_file, output_model_filepath, template_file))
 
 
-def find_recursive_patterns(filepath: str) -> Dict[str, List[str]]:
+def find_recursive_patterns(filepath: str) -> dict[str, list[str]]:
     """
-    Finds classes containing List[BaseModel] or Dict[..., BaseModel] fields.
+    Finds classes containing list[BaseModel] or dict[..., BaseModel] fields.
     Direct BaseModel references are excluded from the results.
     """
     with open(filepath, 'r') as f:
@@ -372,23 +387,23 @@ def find_recursive_patterns(filepath: str) -> Dict[str, List[str]]:
                     if isinstance(annotation, ast.Subscript):
                         container_type, value_type = None, None
 
-                        # Extract container type (List/Dict)
+                        # Extract container type (list/dict)
                         if isinstance(annotation.value, ast.Name):
                             container_type = annotation.value.id
                         elif isinstance(annotation.value, ast.Attribute):
-                            container_type = annotation.value.attr  # For typing.List/typing.Dict
+                            container_type = annotation.value.attr  # For typing.list/typing.dict
 
                         # Extract contained type
                         slice_node = annotation.slice
                         if isinstance(slice_node, ast.Index):  # Python < 3.9
                             slice_node = slice_node.value
 
-                        if container_type == 'List':
+                        if container_type == 'list':
                             if isinstance(slice_node, ast.Name):
                                 value_type = slice_node.id
-                        elif container_type == 'Dict':
+                        elif container_type == 'dict':
                             if isinstance(slice_node, ast.Tuple) and len(slice_node.elts) > 1:
-                                # Dict value type
+                                # dict value type
                                 value_type_node = slice_node.elts[1]
                                 if isinstance(value_type_node, ast.Name):
                                     value_type = value_type_node.id
@@ -422,6 +437,8 @@ def add_model_rebuild_calls(filepath: str):
         if isinstance(node, ast.ClassDef) and node.name in target_classes:
             class_name = node.name
             end_line = node.end_lineno  # 1-based line number
+            if end_line is None:
+                continue
 
             # Check if rebuild call already exists immediately after class
             if end_line < len(lines):
@@ -465,10 +482,14 @@ async def GeneratePydanticModelStructuredOutput(prompt, schema_object_filepath, 
 
 
 
-async def responses_structured_output(model, system_message, prompt, pydantic_model):
-
-    client = make_openai_client()
-    response = client.responses.parse(
+async def responses_structured_output(
+    model, 
+    system_message, 
+    prompt, 
+    pydantic_model,
+    client=make_async_openai_client()
+):
+    response = await client.responses.parse(
         model=model,
         instructions=system_message,
         input=prompt,

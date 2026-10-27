@@ -1,5 +1,6 @@
 
 from enum import StrEnum
+from dataclasses import dataclass
 import os
 import json
 from pathlib import Path, PurePosixPath
@@ -7,20 +8,27 @@ import posixpath
 from difflib import SequenceMatcher
 
 
-from .exceptions import V4APatchError
+
+
+from ..exceptions import V4APatchError
+from ..clients import Client, make_client
+from .gpt_module import GPTModule
 
 
 class ApplyV4AMode(StrEnum):
     DEFAULT = "default"
     CREATE = "create"
 
+
 class DiffOp(StrEnum):
     CREATE_FILE = "create_file"
     DELETE_FILE = "delete_file"
     UPDATE_FILE = "update_file"
 
+
 def _norm(p: str) -> str:
     return posixpath.normpath(p)
+
 
 def closest_path_stdlib(query: str, choices: list[str]) -> str | None:
     if not choices:
@@ -300,3 +308,31 @@ def apply_diff(item, filepaths, last_diffs):
 
             case _:
                 print(f"Unknown diff operation type: {diff_type}")
+
+
+@dataclass
+class Diffs(GPTModule):
+    client: Client = make_client()
+
+    def __post_init__(self):
+        self._tools = {
+            "apply_patch": [{"type": "apply_patch"}]
+        }
+
+    def _response_output_items(self, response):
+        for item in response.output:
+            yield item
+
+    async def apply_diff(self, prompt, filepaths, verbose=False):
+        response = await self.client.async_responses_create(
+            prompt, 
+            model=self.model,
+            verbose=verbose,
+            tools=self._tools["apply_patch"],
+        )
+        last_diffs = {}
+        for item in self._response_output_items(response):
+            apply_diff(item, filepaths, last_diffs)
+
+    def undo_last_diffs(self):
+        return undo_last_diff()

@@ -2,8 +2,9 @@ from openai import OpenAI
 import tiktoken
 
 
-from .clients import make_client, Vendor
-from .models import EmbeddingModels
+from ..clients import make_client, Vendor
+from ..models import EmbeddingModels
+from ..exceptions import ClientError
 
 
 encoding_name = 'cl100k_base'
@@ -71,10 +72,12 @@ async def get_embedding(
 
     truncated_text = truncate_to_token_limit(text, model)
 
-    response = await client.async_client.embeddings.create(
+    response = await client.make_embeddings(
         input=truncated_text,
         model=model,
         encoding_format=encoding_format,
         dimensions=dimensions
     )
-    return response.data[0].embedding
+    if isinstance(response, Exception):
+        raise ClientError from response
+    return response

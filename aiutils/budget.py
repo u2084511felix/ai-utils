@@ -1,5 +1,4 @@
-"""Thread-safe model-spend limits for one pipeline run."""
-from dataclasses import dataclass
+"""Thread-safe model-spend limits."""
 from threading import Lock
 from typing import Self
 
@@ -7,7 +6,7 @@ from typing import Self
 from pydantic import BaseModel, NonNegativeInt, model_validator
 
 
-from .exceptions import BudgetExceededError
+from .exceptions import BudgetExceededError, InitializationError
 from .pricing import calculate_token_cost
 
 
@@ -21,8 +20,8 @@ class TokenUsage(BaseModel):
         cached_input_tokens: Cached input tokens from previous calls.
         reasoning_tokens: Reasoning tokens within ``output_tokens``.
     """
-    input_tokens: NonNegativeInt
-    output_tokens: NonNegativeInt
+    input_tokens: NonNegativeInt = 0
+    output_tokens: NonNegativeInt = 0
     cached_input_tokens: NonNegativeInt = 0
     reasoning_tokens: NonNegativeInt = 0
 
@@ -57,12 +56,7 @@ class SpendBudget:
 
         Args:
             limit_usd: Maximum run spend, or ``None`` for no limit.
-
-        Raises:
-            ValueError: The limit is negative.
         """
-        if limit_usd is not None and limit_usd < 0:
-            raise ValueError("The run spend limit cannot be negative.")
         self.limit_usd = limit_usd
         self.spent_usd = 0.0
         self._lock = Lock()
@@ -102,3 +96,12 @@ class SpendBudget:
         )
         with self._lock:
             self.spent_usd += actual_cost - reserved_cost
+
+def make_spend_budget(limit_usd: float | None = None) -> SpendBudget:
+    """Create a spend budget with an optional USD limit."""
+    if limit_usd is not None and limit_usd < 0:
+        raise ValueError("The run spend limit cannot be negative.")
+    try:
+        return SpendBudget(limit_usd)
+    except ValueError as e:
+        raise InitializationError(f"Failed to create spend budget: {e}") from e

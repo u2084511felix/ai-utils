@@ -9,6 +9,8 @@ from .models import (
     TextModels as TM, 
     ClassificationModels as CM
 )
+
+
 __PER_MILLION = 1_000_000
 
 class Currency(StrEnum):
@@ -116,15 +118,11 @@ class Price(BaseModel):
         if rate == 0:
             raise ZeroDivisionError(f"FX rate for {curr} cannot be zero.")
 
-        if curr == self.currency:
-            return self
-
         return Price(
             name=self.name,
             input=_calc_price(self.input, rate),
             cached_input=_calc_price(self.cached_input, rate),
             output=_calc_price(self.output, rate),
-            currency=curr,
         )
 
 
