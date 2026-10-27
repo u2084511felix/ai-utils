@@ -2,15 +2,17 @@ import re
 import ast
 from typing import Any, Set, Dict, Tuple, List, Optional, Union, Type
 from pydantic import BaseModel, create_model, Field
-from aiutils.openai_config import Generate, TextModels, cclient, create_generator_module
+from aiutils.openai_config import Generate, TextModels, cclient, make_generate
 import json
 import os
 import inspect
 import sys
 import subprocess
-from datamodel_code_generator import InputFileType, DataModelType, generate
-from aiutils import openai_client
+
+
+from .clients import make_openai_client
 import pdb
+
 
 def run_script_action(action):
     os.system(action)
@@ -78,7 +80,7 @@ async def legacy_structured_output(prompt, schema, system_msg="default") -> str:
 async def generate_legacy_structured_output_schema(json_object, system_msg="default") -> str:
     """Returns a JSON string"""
 
-    transforn_prompt = "Transform this JSON object: " + str(json_object)
+    transform_prompt = "Transform this JSON object: " + str(json_object)
     SchemaGenerator = Generate()
 
     if (system_msg == "default"):
@@ -138,7 +140,7 @@ async def generate_legacy_structured_output_schema(json_object, system_msg="defa
     SchemaGenerator.tool_choice = {
         "type": "function", "function": {"name": "Tool_Schema"}}
 
-    generated_schema = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transforn_prompt)
+    generated_schema = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
 
     generated_schema = generated_schema[0].function.arguments
     output_json = json.loads(generated_schema)
@@ -153,7 +155,7 @@ async def generate_legacy_structured_output_schema(json_object, system_msg="defa
 async def generate_structured_output_schema(json_object, system_msg="default") -> str:
     """Returns a JSON string"""
 
-    transforn_prompt = "Transform this JSON object: " + str(json_object)
+    transform_prompt = "Transform this JSON object: " + str(json_object)
     SchemaGenerator = Generate()
 
     if (system_msg == "default"):
@@ -251,7 +253,7 @@ async def generate_structured_output_schema(json_object, system_msg="default") -
     SchemaGenerator.tool_choice = {
         "type": "function", "function": {"name": "Tool_Schema"}}
 
-    generated_schema = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transforn_prompt)
+    generated_schema = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
 
     generated_schema = generated_schema[0].function.arguments
 
@@ -261,7 +263,7 @@ async def generate_structured_output_schema(json_object, system_msg="default") -
     return generated_schema
 
 
-async def structured_outputs_generator(transforn_prompt, schema, system_msg="default", input_type='json', module_name='', params={}, model='', vendor='openai'):
+async def structured_outputs_generator(transform_prompt, schema, system_msg="default", input_type='json', module_name='', params={}, model='', vendor='openai'):
 
     cclient.set_vendor(vendor)
 
@@ -279,17 +281,17 @@ async def structured_outputs_generator(transforn_prompt, schema, system_msg="def
         sys_msg = system_msg
 
     if (params is {}):
-        module = create_generator_module(
+        module = make_generate(
             max_tokens=max_tokens, system_message=sys_msg)
 
     else:
-        module = create_generator_module(**params)
+        module = make_generate(**params)
 
     try:
         if model != '':
-            structured_output = await module.structured_output(system_msg, transforn_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
+            structured_output = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
         else:
-            structured_output = await module.structured_output(system_msg, transforn_prompt, schema=schema, input_type=input_type, module_name=module_name)
+            structured_output = await module.structured_output(system_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
 
     except Exception as e:
         return e
@@ -456,7 +458,8 @@ async def GeneratePydanticModelStructuredOutput(prompt, schema_object_filepath, 
         schema_object, input_file, new_pydantic_model_filepath)
 
     final_output = await structured_outputs_generator(
-        prompt, schema_title, input_type='pydantic', module_name=module_name)
+        prompt, schema_title, input_type='pydantic', module_name=module_name
+    )
 
     return final_output
 
@@ -464,7 +467,8 @@ async def GeneratePydanticModelStructuredOutput(prompt, schema_object_filepath, 
 
 async def responses_structured_output(model, system_message, prompt, pydantic_model):
 
-    response = openai_client.responses.parse(
+    client = make_openai_client()
+    response = client.responses.parse(
         model=model,
         instructions=system_message,
         input=prompt,

@@ -1,16 +1,19 @@
 from __future__ import annotations
-import os
 import json
-from pydantic import BaseModel
+
 from dataclasses import dataclass, field
 import pprint
-from typing import Literal, Optional, List, Dict, Any
-from enum import Enum
+from typing import Any
+from enum import StrEnum
 import importlib
 from importlib import reload
-import pdb
-import subprocess
 from tempfile import NamedTemporaryFile
+from dataclasses import dataclass
+from threading import Lock
+from typing import Any, Self
+
+
+import logging
 
 
 import sys
@@ -19,102 +22,24 @@ import posixpath
 from difflib import SequenceMatcher
 
 
-from aiutils import (
-    openai_client,
-    async_openai_client,
-    encoding,
+from openai import APIResponse, AsyncAPIResponse
+from pydantic import BaseModel
+
+
+from .models import (
     TextModels,
-    EmbeddingModels,
-    Models,
-    reasoning_models,
-    pedantic_reasoning,
-    brave_client,
-    google_client,
+    OpenAIModels,
+    GoogleModels,
+    ClassificationModels,
+    REASONING_MODELS,
+    PEDANTIC_REASONING,
     AudioModels,
     Vendor
 )
+from .budget import TokenUsage
+from .diffs import undo_last_diff, apply_diff
+from .clients import make_client, Client
 
-
-class V4APatchError(RuntimeError):
-    pass
-
-
-ApplyV4AMode = Literal["default", "create"]
-
-
-def _norm(p: str) -> str:
-    return posixpath.normpath(p)
-
-def closest_path_stdlib(query: str, choices: list[str]) -> str | None:
-    if not choices:
-        return None
-
-    qn = _norm(query)
-    qpp = PurePosixPath(qn)
-    q_name = qpp.name
-    q_parent = str(qpp.parent)
-
-    norm_choices = [(_norm(c), c) for c in choices]
-    same_name = [(nc, orig) for (nc, orig) in norm_choices if PurePosixPath(nc).name == q_name]
-    candidates = same_name if same_name else norm_choices
-
-    def ratio(a: str, b: str) -> float:
-        return SequenceMatcher(None, a, b).ratio()  # 0..1
-
-    def score(nc: str) -> float:
-        cpp = PurePosixPath(nc)
-        c_parent = str(cpp.parent)
-
-        dir_sim = ratio(q_parent, c_parent)  # 0..1
-
-        # common suffix boost
-        q_parts = qpp.parts[:-1]
-        c_parts = cpp.parts[:-1]
-        common_suffix = 0
-        for a, b in zip(reversed(q_parts), reversed(c_parts)):
-            if a != b:
-                break
-            common_suffix += 1
-
-        return dir_sim + 0.08 * common_suffix
-
-    best_norm, best_orig = max(candidates, key=lambda t: score(t[0]))
-    return best_orig
-
-
-
-class Client:
-
-    def __init__(
-        self,
-        vendor: str = "openai",
-        client=openai_client,
-        async_client=async_openai_client,
-    ):
-        self.client = client
-        self.async_client = async_client
-        self.vendor = Vendor(vendor.lower())
-
-    def set_vendor(self, vendor):
-        vendor = Vendor(vendor.lower())
-        match vendor:
-            case Vendor.OPENAI:
-                self.client = openai_client
-                self.async_client = async_openai_client
-                self.vendor = Vendor.OPENAI
-            case Vendor.GOOGLE:
-                self.client = google_client
-                # TODO
-                self.async_client = async_openai_client
-                self.vendor = Vendor.GOOGLE
-            case Vendor.BRAVE:
-                self.client = brave_client
-                # TODO
-                self.async_client = async_openai_client
-                self.vendor = Vendor.BRAVE
-
-
-cclient = Client()
 
 
 def clean_pydantic_model(model):
@@ -123,12 +48,31 @@ def clean_pydantic_model(model):
     return clean_dict
 
 
+
+@dataclass(frozen=True)
+class ProviderReply:
+    """Provider output and its reported token usage.
+
+    Args:
+        content: Text or tool calls returned by the provider.
+        usage: Token counts reported for the call.
+    """
+    content: str | Exception
+    usage: TokenUsage
+
+
+
+class InputType(StrEnum):
+    JSON = "json"
+    PYDANTIC = "pydantic"
+
+
 class UserLocation(BaseModel):
-    type: str = field(default_factory="approximate")
+    type: str = "approximate"
     country: str
     city: str
     region: str
-    timezone: Optional[str] = None
+    timezone: str | None = None
 
 
 """
@@ -140,17 +84,17 @@ NOTE:
 
 class SearchTools(BaseModel):
     type: str = "web_search_preview"
-    search_context_size: Optional[str] = None
-    user_location: Optional[UserLocation] = None
+    search_context_size: str | None = None
+    user_location: UserLocation | None = None
 
 
 class WebSearchResponsesModel(BaseModel):
-    model: str = f"{TextModels.gpt_4_1_nano}"
-    tools: List = [SearchTools]
-    input: str = None
+    model: str = TextModels.gpt_4_1_nano
+    tools: list[SearchTools] = field(default_factory=list)
+    input: str | None = None
 
 
-class GPT_Module_Params(BaseModel):
+class GPTModuleParams(BaseModel):
     messages: list
     max_tokens: int
     temperature: float
@@ -174,27 +118,56 @@ class GPT_Module_Params(BaseModel):
 
 @dataclass
 class GPTModule:
-    request_body: Optional[Dict[str, any]] = field(default_factory=dict)
-    model: Optional[str] = None
-    reasoning_effort: Optional[str] = None
-    messages: Optional[list] = field(default_factory=list)
-    token_usage: Optional[int] = None
-    max_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-    frequency_penalty: Optional[float] = None
-    presence_penalty: Optional[float] = None
-    stop: Optional[list] = field(default_factory=list)
-    top_p: Optional[float] = None
-    logit_bias: Optional[Dict[str, float]] = field(default_factory=dict)
-    logprobs: Optional[int] = None
-    top_logprobs: Optional[int] = None
-    n: Optional[int] = None
-    response_format: Optional[any] = field(default_factory=list)
-    seed: Optional[int] = None
-    stream: Optional[bool] = None
-    tools: Optional[list] = field(default_factory=list)
-    tool_choice: Optional[Dict[str, any]] = field(default_factory=dict)
-    user: Optional[str] = None
+    request_body: dict[str, Any] | None = field(default_factory=dict)
+    model: str | None = None
+    reasoning_effort: str | None = None
+    messages: list = field(default_factory=list)
+    token_usage: int | None = None
+    max_tokens: int | None = None
+    temperature: float | None = None
+    frequency_penalty: float | None = None
+    presence_penalty: float | None = None
+    stop: list | None = field(default_factory=list)
+    top_p: float | None = None
+    logit_bias: dict[str, float] | None = field(default_factory=dict)
+    logprobs: int | None = None
+    top_logprobs: int | None = None
+    n: int | None = None
+    response_format: Any | None = field(default_factory=list)
+    seed: int | None = None
+    stream: bool | None = None
+    tools: list | None = field(default_factory=list)
+    tool_choice: dict[str, Any] | None = field(default_factory=dict)
+    user: str | None = None
+
+
+
+
+
+def _openai_usage(
+    response: APIResponse | AsyncAPIResponse
+) -> TokenUsage:
+    """Read token usage from a provider response.
+
+    Args:
+        response: Chat completion returned by the provider SDK.
+
+    Returns:
+        Validated token counts for the call.
+
+    Raises:
+        RuntimeError: The provider omitted usage data.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        raise RuntimeError("The model provider did not report token usage.")
+    details = getattr(usage, "completion_tokens_details", None)
+    reasoning = getattr(details, "reasoning_tokens", 0) if details is not None else 0
+    return TokenUsage(
+        input_tokens=int(usage.prompt_tokens),
+        output_tokens=int(usage.completion_tokens),
+        reasoning_tokens=int(reasoning),
+    )
 
 
 def make_req_body(module: GPTModule):
@@ -209,268 +182,157 @@ def make_req_body(module: GPTModule):
     return request_body
 
 
-def _detect_newline_style(text: str) -> str:
-    if "\r\n" in text:
-        return "\r\n"
-    if "\r" in text and "\n" not in text:
-        return "\r"
-    return "\n"
+def _parse_chat_completion(response):
+    if response is None:
+        return RuntimeError("No response received from the model.")
+
+    if isinstance(response, (Exception,)):
+        return response
+
+    choices = response.choices[0]
+    if not choices:
+        return RuntimeError("No choices returned from the model.")
+
+    response_msg = choices.message
+    if response_msg.tool_calls:
+        print("\n\nfunction call detected.\n\n")
+        return response_msg.tool_calls
+    else:
+        if response_msg.content is None:
+            return RuntimeError("The model provider returned no content.")
+        return response_msg.content
+
+    return ProviderReply(
+        content=response, 
+        usage=_openai_usage(response)
+    )
 
 
-def _has_trailing_newline(text: str) -> bool:
-    return text.endswith("\n") or text.endswith("\r")
-
-
-def _find_subsequence(haystack: list[str], needle: list[str], start: int) -> int:
-    if not needle:
-        return start
-    n = len(needle)
-    for i in range(start, len(haystack) - n + 1):
-        if haystack[i: i + n] == needle:
-            return i
-    return -1
-
-
-def apply_v4a_diff_text(input_text: str, diff: str, mode: ApplyV4AMode = "default") -> str:
-    """
-    Apply a headerless V4A diff to input_text.
-
-    mode="default":
-      ' ' context, '-' delete, '+' insert, hunks separated by '@@'
-    mode="create":
-      create-file syntax: every non-'@@' line must start with '+'
-    """
-    diff_lines = (diff or "").splitlines()
-
-    if mode == "create":
-        out: list[str] = []
-        for line in diff_lines:
-            if line.startswith("@@"):
-                continue
-            if line == "":
-                raise V4APatchError("Invalid V4A create diff: empty line without '+' prefix.")
-            if not line.startswith("+"):
-                raise V4APatchError(
-                    f"Invalid V4A create diff: expected '+' prefix, got {line[:80]!r}"
-                )
-            out.append(line[1:])
-        # For create, newline style is your choice; default to '\n'
-        return "\n".join(out)
-
-    # --- default/update mode (your existing logic) ---
-    newline = _detect_newline_style(input_text)
-    had_trailing_nl = _has_trailing_newline(input_text)
-
-    original = input_text.splitlines()
-    hunks: list[list[str]] = []
-    cur: list[str] = []
-
-    for line in diff_lines:
-        if line.startswith("@@"):
-            if cur:
-                hunks.append(cur)
-                cur = []
-            continue
-        if line == "":
-            raise V4APatchError("Invalid V4A diff: encountered empty line without a prefix.")
-        if line[0] not in (" ", "+", "-"):
-            raise V4APatchError(f"Invalid V4A diff prefix {line[0]!r} in line: {line[:80]!r}")
-        cur.append(line)
-
-    if cur:
-        hunks.append(cur)
-
-    out: list[str] = []
-    pos = 0
-
-    for hunk in hunks:
-        needle = [ln[1:] for ln in hunk if ln[0] in (" ", "-")]
-        start = _find_subsequence(original, needle, pos)
-        if start < 0:
-            preview = "\n".join(hunk)
-            raise V4APatchError(
-                "Could not apply V4A diff: hunk context not found.\n"
-                f"Hunk preview:\n{preview}"
-            )
-
-        out.extend(original[pos:start])
-
-        idx = start
-        for ln in hunk:
-            tag, content = ln[0], ln[1:]
-            if tag == " ":
-                if idx >= len(original) or original[idx] != content:
-                    raise V4APatchError(
-                        f"Context mismatch.\nExpected: {content!r}\nFound: "
-                        f"{(original[idx] if idx < len(original) else None)!r}"
-                    )
-                out.append(content)
-                idx += 1
-            elif tag == "-":
-                if idx >= len(original) or original[idx] != content:
-                    raise V4APatchError(
-                        f"Deletion mismatch.\nExpected: {content!r}\nFound: "
-                        f"{(original[idx] if idx < len(original) else None)!r}"
-                    )
-                idx += 1
-            else:  # '+'
-                out.append(content)
-
-        pos = idx
-
-    out.extend(original[pos:])
-
-    result = newline.join(out)
-    if had_trailing_nl:
-        result += newline
-    return result
-
-
-def invert_v4a_diff(diff: str) -> str:
-    out = []
-    for line in diff.splitlines():
-        if line.startswith("@@"):
-            out.append(line)
-        elif line.startswith("+"):
-            out.append("-" + line[1:])
-        elif line.startswith("-"):
-            out.append("+" + line[1:])
-        elif line.startswith(""):
-            out.append(line)
-        elif line == "":
-            # If your generator ever emits truly empty lines (rare), preserve them.
-            out.append(line)
-        else:
-            raise ValueError(f"Invalid V4A diff line: {line!r}")
-    return "\n".join(out)
-
-
-def load_last_diffs():
-    cwd = os.getcwd()
-    last_diffs_path = cwd + "/last_diffs.json"
-    with open(last_diffs_path, "r") as f:
-        last_diffs = json.load(f)
-    return last_diffs
-
-def save_last_diffs(last_diffs):
-    cwd = os.getcwd()
-    last_diffs_path = cwd + "/last_diffs.json"
-    with open(last_diffs_path, "w") as f:
-        json.dump(last_diffs, f, indent=4)
-
-def save_diff(id, diff):
-    cwd = os.getcwd()
-    diff_path = cwd + "/diff_tmp/" + id + ".txt"
-    path = cwd + "/diff_tmp"
-    os.makedirs(path, exist_ok=True)
-    with open(diff_path, "w") as f:
-        f.write(diff)
-
-def apply_patch(path, diff):
-    file_path = Path(path)
-    old = file_path.read_text(encoding="utf-8")
-    new = apply_v4a_diff_text(old, diff)
-    file_path.write_text(new, encoding="utf-8")
-
-def create_file(path: str, diff: str):
-    file_path = Path(path)
-    os.makedirs(file_path.parent, exist_ok=True)
-    new = apply_v4a_diff_text("", diff, mode="create")
-    file_path.write_text(new, encoding="utf-8")
-    print(f"Created file: {path}")
-
-def delete_file(path: str):
-    file_path = Path(path)
-    file_path.unlink()
-    print(f"Deleted file: {path}")
 
 
 @dataclass
 class Generate(GPTModule):
-    def __init__(
-        self,
-        model=TextModels.gpt_4_1,
-        client=cclient,
-    ):
-        self.model = model
+    model: str = TextModels.gpt_5_2
+    client: Client = make_client()
+    logger: logging.Logger = logging.getLogger(__name__)
+
+    def __post_init__(self):
         self.messages = []
         self.temperature = 0
-        self.client = client
+        self._tools = {
+            "apply_patch": [{"type": "apply_patch"}]
+        }
+        self._client = self.client.client
+        self._async_client = self.client.async_client
+        self._model = self.model
+
+    def _response_create(self, prompt, tools=None, verbose=False, **kwargs):
+        response = self._client.responses.create(
+            input=prompt,
+            model=self.model,
+            tools=tools,
+            **kwargs
+        )
+        if verbose:
+            self.logger.debug(response.model_dump())
+        return response
+
+    async def _async_response_create(self, prompt, tools=None, verbose=False, **kwargs):
+        response = await self._async_client.responses.create(
+            input=prompt,
+            model=self.model,
+            tools=tools,
+            **kwargs
+        )
+        if verbose:
+            self.logger.debug(response.model_dump())
+        return response
+
+
+    def _chat_completions_body(self, params, verbose=False, input_type='json'):
+        response = None
+        comp = self._client.chat.completions
+        try:
+            match input_type:
+                case 'json':     response = comp.create(**params)
+                case 'pydantic': response = comp.parse(**params)
+                case _:          raise ValueError(f"Unsupported input_type: {input_type}")
+            return response
+        except Exception as e:
+            response = e
+        if verbose:
+            self.logger.debug(response)
+        return response
+
+
+    async def _async_chat_completions_body(self, params, verbose=False, input_type='json'):
+        response = None
+        comp = self._async_client.chat.completions
+        try:
+            match input_type:
+                case 'json':     response = await comp.create(**params)
+                case 'pydantic': response = await comp.parse(**params)
+                case _:         raise ValueError(f"Unsupported input_type: {input_type}")
+        except Exception as e:
+            response = e
+        if verbose:
+            self.logger.debug(response)
+        return response
+
+
+    def _chat_completions(self, params, verbose=False, parse_response=True):
+        response = None
+        try:
+            response = self._client.chat.completions.create(**params)
+        except Exception as e:
+            response = e
+        if verbose:
+            self.logger.debug(response)
+        if not parse_response:
+            return response
+        return _parse_chat_completion(response)
+
+
+    async def _async_chat_completions(self, params, verbose=False, parse_response=True):
+        response = None
+        try:
+            response = await self._async_client.chat.completions.create(**params)
+        except Exception as e:
+            response = e
+        if verbose:
+            self.logger.debug(response)
+        if not parse_response:
+            return response
+        return _parse_chat_completion(response)
+
+
+
+
+
+    def _response_output_items(self, response):
+        for item in response.output:
+            yield item
+
 
     async def apply_diff(self, prompt, filepaths, verbose=False):
 
-        model = TextModels.gpt_5_2
-        tools = [{"type": "apply_patch"}]
-
-        response = self.client.responses.create(
-            model=model,
-            input=prompt,
-            tools=[{"type": "apply_patch"}],
+        response = await self._async_response_create(
+            prompt, 
+            verbose=verbose,
+            tools=self._tools["apply_patch"],
         )
-        if verbose == True:
-            pr = response.model_dump()
-            pprint.pprint(pr)
 
         # - update lib/fib.py
         # - update run.py
         last_diffs = {}
 
-        for item in response.output:
-            item = item.model_dump()
+        for item in self._response_output_items(response):
+            apply_diff(item, filepaths, last_diffs)
 
-
-            if item.get("type") == "apply_patch_call":
-                operation = item.get("operation")
-                id = item.get("id")
-                # 'create_file', 'update_file', 'delete_file'
-                diff_type = operation.get("type")
-                path = operation.get("path")
-
-                if path not in filepaths:
-                    path = closest_path_stdlib(path, filepaths)
-                if operation.get("diff") is not None:
-                    diff = operation.get("diff")
-
-
-                if diff_type == "create_file":
-                    create_file(path, diff)
-                    print(f"Applied {diff_type} patch to {path}")
-
-                elif diff_type == "update_file":
-                    try:
-                        apply_patch(path, diff)
-                    except Exception as e:
-                        print(f"Error while applying patch: {e}")
-
-                    last_diffs[id] = path 
-                    save_diff(id, diff)
-                    save_last_diffs(last_diffs)
-                    print(f"Applied {diff_type} patch to {path}")
-
-                elif diff_type == "delete_file":
-                    delete_file(path)
-                    print(f"Applied {diff_type} patch to {path}")
-
-                else:
-                    print(f"Unknown diff operation type: {diff_type}")
 
     def undo_last_diffs(self):
-        last_diffs = load_last_diffs()
-        diff_paths = []
+        return undo_last_diff()
 
-        try:
-            for id, path in last_diffs.items():
-                cwd = os.getcwd()
-                diff_path = cwd + "/diff_tmp/" + id + ".txt"
-                diff_paths.append(diff_path)
-                with open(diff_path, "r") as f:
-                    diff = f.read()
-                undo_diff = invert_v4a_diff(diff)
-                apply_patch(path, undo_diff)
-            for diff_path in diff_paths:
-                os.remove(diff_path)
-        except Exception as e:
-            print(f"Error while undoing diff: {e}")
 
     async def web_search(self, tool_dict=None, **kwargs) -> str:
         """
@@ -478,8 +340,8 @@ class Generate(GPTModule):
             model: str = f"{TextModels.hipster_mini}"
             tools: List = 
                 type: "web_search_preview"
-                search_context_size: Optional[str] = None
-                user_location: Optional[UserLocation] = None
+                search_context_size: str | None = None
+                user_location: UserLocation | None = None
 
             input: str = None
 
@@ -504,20 +366,20 @@ class Generate(GPTModule):
             clean_model["tools"].append(tool_dump)
 
         try:
-            response = await ResponsesCall(**clean_model)
+            response = await self._async_response_create(**clean_model)
             return response
-
         except Exception as e:
-            return e
+            self.logger.error(f"Error in web_search: {e}")
+            raise e
 
     def _set_reasoning_effort_and_temperature(self, reasoning_effort, temperature=None): 
-        if self.model in reasoning_models:
+        if self.model in REASONING_MODELS:
             self.temperature = 1
             if reasoning_effort == "default":
                 self.reasoning_effort = "none"
             else:
                 self.reasoning_effort = reasoning_effort
-        elif self.model in pedantic_reasoning:
+        elif self.model in PEDANTIC_REASONING:
             self.temperature = 1
             if reasoning_effort == "default":
                 self.reasoning_effort = "minimal"
@@ -526,24 +388,40 @@ class Generate(GPTModule):
         else:
             self.temperature = temperature or 0
 
+
+    def _check_model(self, model):
+        vendor = self._client.vendor
+        try:
+            model = TextModels(model)
+        except ValueError:
+            raise ValueError(f"Invalid model: {model}")
+        if model in GoogleModels and vendor != Vendor.GOOGLE:
+            raise ValueError(f"Invalid model for vendor Google: {model}")
+        if model in OpenAIModels and vendor != Vendor.OPENAI:
+            raise ValueError(f"Invalid model for vendor OpenAI: {model}")
+        return model
+
+
     async def generate(
         self, 
-        system_message, 
-        prompt,
-        model=TextModels.gpt_5_2, 
-        temperature=0, 
-        chat=True, 
-        reasoning_effort="default"
-    ) -> str:
+        system_message: str, 
+        prompt: str,
+        model: str = TextModels.gpt_5_2, 
+        temperature: float = 0, 
+        chat: bool = True, 
+        reasoning_effort: str = "default"
+    ) -> str | Exception:
         """Returns a semantic LLM response string"""
-        if self.client.vendor == Vendor.GOOGLE:
-            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
-                self.model = model
-            else:
-                self.model = TextModels.gemini_25_flash
-        else:
-            self.model = model
+        if not system_message:
+            raise ValueError("system_message cannot be empty")
+        if not prompt:
+            raise ValueError("prompt cannot be empty")
+        if temperature < 0:
+            raise ValueError("temperature cannot be negative")
 
+        model = self._check_model(model)
+
+        self.model = model
         self._set_reasoning_effort_and_temperature(reasoning_effort, temperature)
 
         self.messages.append({"role": "system", "content": system_message})
@@ -552,84 +430,85 @@ class Generate(GPTModule):
         self.request_body = make_req_body(self)
 
         if chat:
-            response = await chat_(self.request_body, client=self.client)
-            return response
+            response = await self._async_chat_completions(self.request_body)
         else:
-            response_body = await chat_body(self.request_body, client=self.client)
-            return response_body
+            response = await self._async_chat_completions_body(self.request_body)
+        return response
 
 
-    async def continued_response(self, assistant_response, prompt):
+    async def continued_response(
+        self, 
+        assistant_response: str, 
+        prompt:str
+    ) -> str | Exception:
         self.messages.append({"role": "assistant", "content": assistant_response})
         self.messages.append({"role": "user", "content": prompt})
         self.request_body = make_req_body(self)
+        return await self._async_chat_completions(self.request_body)
 
-        response = await chat(
-            self.request_body, 
-            client=self.client,
-            use_async=True
-        )
-        return response
 
-    async def function_call_legacy_structured_output(self, system_message, prompt):
+    async def function_call_legacy_structured_output(
+        self, 
+        system_message: str, 
+        prompt: str
+    ):
         self.model = TextModels.previous
         self.messages.append({"role": "system", "content": system_message})
         self.messages.append({"role": "user", "content": prompt})
-        if self.model in reasoning_models:
+        if self.model in REASONING_MODELS:
             self.reasoning_effort = "none"
         self.request_body = make_req_body(self)
+        return await self._async_chat_completions(self.request_body)
 
-        response = await chat(self.request_body, client=self.client, use_async=True)
-        return response
 
-    def call_function(self, function_response, available_functions):
-        return send_function_call_args_to_available_functions(function_response, available_functions)
+    def call_function(self, function_response, available_funcs):
+        return send_func_call_args_to_available_funcs(
+            function_response, 
+            available_funcs
+        )
+
 
     async def structured_output(
         self, 
-        system_message, 
-        prompt, 
-        schema={}, 
-        input_type="json", 
-        module_name='', 
-        model=TextModels.gpt_5_2, 
-        reasoning_effort="default", 
-        assistance_response=None, 
-        debug=False
-    ) -> str:
+        system_message: str, 
+        prompt: str, 
+        schema: dict | type[BaseModel] = {}, 
+        input_type: str = "json", 
+        module_name: str = '', 
+        model: str = TextModels.gpt_5_2, 
+        reasoning_effort: str = "default", 
+        assistance_response: str | None=None, 
+        debug: bool = False
+    ) -> str | Exception:
         """Returns a JSON string."""
-        if self.client.vendor == "google":
-            if model == TextModels.gemini_25_pro or model == TextModels.gemini_25_flash or model == TextModels.gemini_25_flash_lite or model == TextModels.gemini_3_pro:
-                self.model = model
-            else:
-                self.model = TextModels.gemini_25_flash
-        else:
-            self.model = model
+        model = self._check_model(model)
+        input_type = InputType(input_type)
+
+        self.model = model
 
         self._set_reasoning_effort_and_temperature(reasoning_effort)
 
         if assistance_response is not None:
-            self.messages.append({"role": "assistant", "content": assistance_response})
+            msg = {"role": "assistant", "content": assistance_response}
         else:
-            self.messages.append({"role": "system", "content": system_message})
+            msg = {"role": "system", "content": system_message}
 
+        self.messages.append(msg)
         self.messages.append({"role": "user", "content": prompt})
 
         match input_type:
-            case 'json':
+            case InputType.JSON:
                 schema = json.loads(schema)
                 self.response_format = {
                     "type": "json_schema",
                     "json_schema": schema
                 }
                 self.request_body = make_req_body(self)
-                response = await chat_body(
+                response = await self._async_chat_completions_body(
                     self.request_body,
                     input_type=input_type,
-                    client=self.client,
-                    use_async=True
                 )
-            case 'pydantic':
+            case InputType.PYDANTIC:
                 if module_name != '':
                     module = importlib.import_module(module_name)
                     module = reload(module)
@@ -640,19 +519,17 @@ class Generate(GPTModule):
                     self.response_format = schema
 
                 self.request_body = make_req_body(self)
-                response = await chat_body(
+                response = await self._async_chat_completions_body(
                     self.request_body,
                     input_type=input_type,
-                    client=self.client,
-                    use_async=True
                 )
             case _:
                 raise ValueError(f"Unsupported input_type: {input_type}")
 
         if debug == True:
             if assistance_response is not None:
-                print("Running stateful structured output with previous assistant response in context.")
-            pprint.pprint(response)
+                self.logger.debug("Running stateful structured output with previous assistant response in context.")
+            self.logger.debug(response)
         
         if hasattr(response, "choices"):
             return response.choices[0].message.content
@@ -660,164 +537,28 @@ class Generate(GPTModule):
         else:
             return response
 
-"""
-Audio Models
-
-"""
 
 
-class SpeechMode(str, Enum):
-    """High level presets for your audio pipeline."""
-    high_quality = "high_quality"   # gpt-4o-transcribe + gpt-4o-mini-tts
-    fast = "fast"                   # gpt-4o-mini-transcribe + gpt-4o-mini-tts
-    legacy = "legacy"               # whisper-1 + tts-1
 
-@dataclass
-class SpeechIO:
-    mode: SpeechMode = SpeechMode.high_quality
-    tts_voice: str = "nova"
-    tts_format: str = "mp3"
-
-    stt_model: str = field(init=False)
-    tts_model: str = field(init=False)
-    client: Any = cclient.client
-
-    def __post_init__(self):
-        if self.mode == SpeechMode.fast:
-            self.stt_model = AudioModels.gpt_4o_mini_transcribe
-            self.tts_model = AudioModels.gpt_4o_mini_tts
-        elif self.mode == SpeechMode.legacy:
-            self.stt_model = AudioModels.whisper
-            self.tts_model = AudioModels.tts
-        else:
-            self.stt_model = AudioModels.gpt_4o_transcribe
-            self.tts_model = AudioModels.gpt_4o_mini_tts
-
-    async def transcribe(
-        self,
-        file,
-        *,
-        response_format: str = "text",
-        language: str | None = None,
-        **kwargs: Any,
-    ) -> str:
-        params: dict[str, Any] = {
-            "model": self.stt_model,
-            "file": file,
-            "response_format": response_format,
-        }
-        if language:
-            params["language"] = language
-        params.update(kwargs)
-
-        # Make sure the file pointer is at the beginning
-        try:
-            file.seek(0)
-        except Exception:
-            pass
-
-        result = self.client.audio.transcriptions.create(**params)
-
-        if isinstance(result, str):
-            return result
-        if hasattr(result, "text"):
-            return result.text
-        return str(result)
-
-    async def synthesize(
-        self,
-        text: str,
-        *,
-        voice: str | None = None,
-        response_format: str | None = None,
-        **kwargs: Any,
-    ) -> bytes:
-        """
-        Text → audio using the configured TTS model.
-        Returns raw bytes suitable for base64 encoding.
-        """
-        v = voice or self.tts_voice
-        fmt = response_format or self.tts_format
-
-        params: dict[str, Any] = {
-            "model": self.tts_model,
-            "voice": v,
-            "input": text,
-            "response_format": fmt,
-        }
-        params.update(kwargs)
-
-        audio_resp = self.client.audio.speech.create(**params)
-
-        # This is the key: read bytes from the response object
-        if hasattr(audio_resp, "read"):
-            return audio_resp.read()
-
-        # Extra fallback just in case (you probably won't need this)
-        try:
-            return bytes(audio_resp)  # type: ignore[arg-type]
-        except Exception:
-            return str(audio_resp).encode("utf-8")
-
-def create_generator_module(**kwargs):
+def make_generate(**kwargs):
     """
     args: (**kwargs)
     eg:
 
-    some_generator = create_generator_module(
+    some_generator = make_generate(
         temperature=0,
         model=Models.text.hipster_latest
     )
     """
     module = Generate()
-    for key, value in kwargs.items():
-        setattr(module, key, value)
-
+    _ = [setattr(module, k, v) for k, v in kwargs.items()]
     return module
 
-async def chat_body(params, client=cclient, input_type='json', use_async=True):
-    response = None
-    try:
-        match input_type:
-            case 'json':
-                if use_async:
-                    response = await client.async_client.chat.completions.create(**params)
-                else:
-                    response = client.chat.completions.create(**params)
-            case 'pydantic':
-                if use_async:
-                    response = await client.async_client.chat.completions.parse(**params)
-                else:
-                    response = client.chat.completions.parse(**params)
-            case _:
-                raise ValueError(f"Unsupported input_type: {input_type}")
-
-        return response
-    except Exception as e:
-        return e
 
 
-async def chat_(params, *, client=cclient, use_async=True):
-    try:
-        if use_async:
-            response = await client.async_client.chat.completions.create(**params)
-        else:
-            response = client.chat.completions.create(**params)
-
-        response_message = response.choices[0].message
-        if response_message.tool_calls:
-            print("\n\nfunction call detected.\n\n")
-            return (response_message.tool_calls)
-
-        else:
-            response_text = response.choices[0].message.content
-            return (response_text)
-
-    except Exception as e:
-        return e
 
 
-async def ResponsesCall(client=cclient, use_async=True, **kwargs):
+async def response_call(client, use_async=True, **kwargs):
     try:
         if use_async:
             response = await client.async_client.responses.create(**kwargs)
@@ -825,38 +566,36 @@ async def ResponsesCall(client=cclient, use_async=True, **kwargs):
             response = client.responses.create(**kwargs)
         return response.output_text
     except Exception as e:
-        return e
+        raise e
 
-def send_function_call_args_to_available_functions(response, available_functions):
 
-    return_values = {}
+def send_func_call_args_to_available_funcs(
+    response, 
+    available_functions
+):
+    func_dict = {}
 
     try:
         for tool_call in response:
             print("tool call detected\n", tool_call, "\n")
-            function_name = tool_call.function.name
-            function_to_call = available_functions[function_name]
-            function_args = json.loads(tool_call.function.arguments)
+            name = tool_call.function.name
+            call = available_functions[name]
+            args = json.loads(tool_call.function.arguments)
 
-            print(str(function_args))
+            print(str(args))
 
-            if function_args == {}:
-                return_value = function_to_call()
-                return_value = str(return_value)
-                print(return_value)
-            else:
-                return_value = function_to_call(**function_args)
-                return_value = str(return_value)
-                print(return_value)
+            func_return = call(**args) if args else call()
+            func_return = str(func_return)
+            print(func_return)
 
-            return_values[function_name] = {
+            func_dict[name] = {
                 "tool_call_id": tool_call.id,
                 "role": "tool",
-                "name": function_name,
-                "content": return_value,
+                "name": name,
+                "content": func_return,
             }
 
-        return return_values
+        return func_dict
 
     except Exception as e:
-        print(f"\nException: {e}\n")
+        raise e

@@ -1,15 +1,18 @@
 from openai import OpenAI
-from aiutils import openai_client, EmbeddingModels
 import tiktoken
-from typing import List
+
+
+from .clients import make_client, Vendor
+from .models import EmbeddingModels
+
 
 encoding_name = 'cl100k_base'
 
 
 def truncate_to_token_limit(
-  text, 
-  model,
-  max_tokens=8191
+  text: str, 
+  model: str,
+  max_tokens: int = 8191
 ):
     encoding = tiktoken.encoding_for_model(model)
     tokens = encoding.encode(text)
@@ -18,9 +21,8 @@ def truncate_to_token_limit(
     if length <= max_tokens:
         return text
 
-    print(f'Chunk too large ({length}), truncating to 8191 tokens')
-    truncated_tokens = tokens[:max_tokens]
-    truncated_text = encoding.decode(truncated_tokens)
+    print(f'Chunk too large ({length}), truncating to {max_tokens} tokens')
+    truncated_text = encoding.decode(tokens[:max_tokens])
     return truncated_text
 
 
@@ -31,11 +33,11 @@ def get_token_count(text):
 
 async def get_embedding(
     text,
-    client=openai_client, 
-    model='large', 
+    client=make_client(Vendor.OPENAI), 
+    model=EmbeddingModels.LARGE, 
     dimensions=3072, 
     encoding_format="float"
-  ) -> List[float]:
+  ) -> list[float]:
     """
     Response object:
     {
@@ -63,7 +65,7 @@ async def get_embedding(
     min_dimensions = 1536
     model = EmbeddingModels(model.lower())
     match model:
-        case EmbeddingModels.small | EmbeddingModels.legacy:
+        case EmbeddingModels.SMALL | EmbeddingModels.LEGACY:
             if dimensions > min_dimensions:
                 dimensions = min_dimensions
 
