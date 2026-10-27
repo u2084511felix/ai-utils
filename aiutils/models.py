@@ -101,20 +101,19 @@ class TypeSafeModels:
     jev = "jev-latest"
 
 
-class GoogleModels(StrEnum, _GoogleModels):
-    pass
+def _model_members(*sources):
+    return {
+        name: value
+        for source in sources
+        for name, value in vars(source).items()
+        if not name.startswith('_') and isinstance(value, str)
+    }
 
-class OpenAIModels(StrEnum, _OpenAIModels):
-    pass
 
-
-class TextModels(StrEnum, _GoogleModels, _OpenAIModels, LegacyModels):
-    """Supported text models."""
-    pass
-
-class ClassificationModels(StrEnum, TypeSafeModels):
-    """Supported classification models."""
-    pass
+GoogleModels = StrEnum('GoogleModels', _model_members(_GoogleModels))
+OpenAIModels = StrEnum('OpenAIModels', _model_members(_OpenAIModels))
+TextModels = StrEnum('TextModels', _model_members(_GoogleModels, _OpenAIModels, LegacyModels))
+ClassificationModels = StrEnum('ClassificationModels', _model_members(TypeSafeModels))
 
 
 class EmbeddingModels(StrEnum):

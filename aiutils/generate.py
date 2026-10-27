@@ -1,7 +1,6 @@
 import importlib
 import json
 import logging
-from dataclasses import dataclass
 
 
 from pydantic import BaseModel
@@ -32,7 +31,6 @@ def _check_model(model, vendor):
     return model
 
 
-@dataclass
 class Generate(GPTModule):
     """ChatGPT-based text generation module."""
     client: Client = make_client()
