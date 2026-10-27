@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Revise the pytest suite to use public calls, fixture setup, one assertion per
+  test, named expected values, and GIVEN/WHEN/THEN test descriptions.
+- Split tests with multiple actions into separate cases. Move prior calls for
+  conversation, budget, and patch tests into fixtures.
 - Removed all 16 `xfail` decorators so the 24 affected test cases report normal
   failures and block pre-commit until the underlying defects are fixed.
 

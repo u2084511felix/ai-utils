@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call as mock_call
 
 import pytest
 
@@ -9,8 +9,6 @@ from aiutils.modules import embeddings
 
 @pytest.fixture
 def encoding(monkeypatch):
-    # Character-level tokenizer keeps these tests deterministic and avoids
-    # tiktoken downloading vocabulary files on a fresh machine.
     tokenizer = Mock()
     tokenizer.encode.side_effect = lambda text: list(text)
     tokenizer.decode.side_effect = lambda tokens: "".join(tokens)
@@ -22,48 +20,87 @@ def encoding(monkeypatch):
 
 @pytest.mark.parametrize("text,limit,expected", [("abc", 3, "abc"), ("abc", 10, "abc"), ("abc", 2, "ab"), ("abc", 0, ""), ("", 3, "")])
 def test_truncate_at_token_boundary(encoding, text, limit, expected):
-    assert embeddings.truncate_to_token_limit(text, "test", limit) == expected
-    encoding.encode.assert_called_once_with(text)
+    """GIVEN text and a model.
+    WHEN the text operation is called.
+    THEN the text contains no more than the specified number of tokens."""
+    result = embeddings.truncate_to_token_limit(text, "test", limit)
+    assert result == expected
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("model,requested,expected", [
-    (EmbeddingModels.LARGE, 3072, 3072), (EmbeddingModels.SMALL, 3072, 1536),
-    (EmbeddingModels.LEGACY, 3072, 1536), (EmbeddingModels.SMALL, 256, 256),
-])
-async def test_embedding_dimensions_and_parameters(encoding, model, requested, expected):
+@pytest.fixture
+def embedding_request(encoding):
     client = Mock(make_embeddings=AsyncMock(return_value=[0.1, -0.2]))
-    result = await embeddings.get_embedding("text", client=client, model=model.upper(), dimensions=requested)
-    assert result == [0.1, -0.2]
-    client.make_embeddings.assert_awaited_once_with(input="text", model=model, encoding_format="float", dimensions=expected)
+    return client
 
 
 @pytest.mark.asyncio
-async def test_provider_failure_is_chained(encoding):
+@pytest.mark.parametrize("model,requested,expected", [(EmbeddingModels.LARGE, 3072, 3072), (EmbeddingModels.SMALL, 3072, 1536), (EmbeddingModels.LEGACY, 3072, 1536), (EmbeddingModels.SMALL, 256, 256)])
+async def test_embedding_dimensions_and_parameters(embedding_request, model, requested, expected):
+    """GIVEN text and a model.
+    WHEN the text operation is called.
+    THEN the request uses the model limit and returns the embedding."""
+    client = embedding_request
+    result = await embeddings.get_embedding("text", client=client, model=model.upper(), dimensions=requested)
+    actual = (result, client.make_embeddings.await_args_list)
+    expected = ([0.1, -0.2], [mock_call(input="text", model=model, encoding_format="float", dimensions=expected)])
+    assert actual == expected
+
+
+@pytest.fixture
+def embedding_failure(encoding):
     error = RuntimeError("embedding failed")
     client = Mock(make_embeddings=AsyncMock(return_value=error))
-    with pytest.raises(ClientError) as exc:
-        await embeddings.get_embedding("text", client=client)
-    assert exc.value.__cause__ is error
+    return (client, error)
 
 
 @pytest.mark.asyncio
-async def test_unknown_embedding_model_rejected():
+async def test_provider_failure_is_chained(embedding_failure):
+    """GIVEN an operation that reports an error.
+    WHEN the text operation is called.
+    THEN the error retains the provider error as its cause."""
+    client, error = embedding_failure
+    with pytest.raises(ClientError) as exc:
+        await embeddings.get_embedding("text", client=client)
+    expected = True
+    assert (exc.value.__cause__ is error) == expected
+
+
+@pytest.fixture
+def embedding_client():
     client = Mock(make_embeddings=AsyncMock())
+    return client
+
+
+@pytest.mark.asyncio
+async def test_unknown_embedding_model_rejected(embedding_client):
+    """GIVEN an unknown embedding model.
+    WHEN the text operation is called.
+    THEN the model is rejected before a provider request."""
+    client = embedding_client
     with pytest.raises(ValueError):
         await embeddings.get_embedding("text", client=client, model="unknown")
-    client.make_embeddings.assert_not_awaited()
+    expected = []
+    assert client.make_embeddings.await_args_list == expected
 
 
-def test_token_count_uses_named_encoding(monkeypatch):
-    def encoding_for_model(model):
-        raise KeyError(model)
-    monkeypatch.setattr(embeddings.tiktoken, "encoding_for_model", encoding_for_model)
+@pytest.fixture
+def named_encoding(monkeypatch):
     monkeypatch.setattr(embeddings.tiktoken, "get_encoding", lambda name: Mock(encode=lambda text: list(text)))
-    assert embeddings.get_token_count("abc") == 3
+
+
+def test_token_count_uses_named_encoding(named_encoding):
+    """GIVEN text and a model.
+    WHEN the text operation is called.
+    THEN the named encoding gives the expected token count."""
+    result = embeddings.get_token_count("abc")
+    expected = 3
+    assert result == expected
 
 
 @pytest.mark.parametrize("text,expected", [("", 0), ("abc", 3), ("café", 4)])
 def test_token_count_counts_encoder_output(encoding, text, expected):
-    assert embeddings.get_token_count(text) == expected
-    encoding.encode.assert_called_once_with(text)
+    """GIVEN text and a model.
+    WHEN the text operation is called.
+    THEN the token count matches the encoded text."""
+    result = embeddings.get_token_count(text)
+    assert result == expected

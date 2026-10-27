@@ -1,16 +1,16 @@
-"""Offline test fixtures; no provider credentials or requests are needed."""
+"""Supply test clients and prevent network requests."""
+
 import socket
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-
 _environment = pytest.MonkeyPatch()
 
 
 def pytest_configure(config):
-    # The library creates default SDK clients while importing modules.
+    # Set test keys before the package modules are imported.
     for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "BRAVE_API_KEY"):
         _environment.setenv(name, "pytest-not-a-real-key")
 
@@ -32,14 +32,21 @@ def forbid_network(monkeypatch):
 def response_factory():
     def make(content="hello", *, tool_calls=None, reasoning=2):
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(
-                content=content, tool_calls=tool_calls,
-            ))],
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content=content,
+                        tool_calls=tool_calls,
+                    )
+                )
+            ],
             usage=SimpleNamespace(
-                prompt_tokens=10, completion_tokens=5,
+                prompt_tokens=10,
+                completion_tokens=5,
                 completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning),
             ),
         )
+
     return make
 
 
@@ -54,12 +61,18 @@ def client(response_factory):
     sync.chat.completions.create.return_value = response_factory()
     sync.chat.completions.parse.return_value = response_factory()
     async_sdk = Mock(spec=AsyncOpenAI)
-    async_sdk.chat = SimpleNamespace(completions=SimpleNamespace(
-        create=AsyncMock(return_value=response_factory()),
-        parse=AsyncMock(return_value=response_factory()),
-    ))
+    async_sdk.chat = SimpleNamespace(
+        completions=SimpleNamespace(
+            create=AsyncMock(return_value=response_factory()),
+            parse=AsyncMock(return_value=response_factory()),
+        )
+    )
     async_sdk.responses = SimpleNamespace(create=AsyncMock(return_value=response_factory()))
-    async_sdk.embeddings = SimpleNamespace(create=AsyncMock(return_value=SimpleNamespace(
-        data=[SimpleNamespace(embedding=[0.1, 0.2])],
-    )))
+    async_sdk.embeddings = SimpleNamespace(
+        create=AsyncMock(
+            return_value=SimpleNamespace(
+                data=[SimpleNamespace(embedding=[0.1, 0.2])],
+            )
+        )
+    )
     return Client(client=sync, async_client=async_sdk)
