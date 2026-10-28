@@ -39,6 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Correct the model-switch test to request a non-reasoning model after a
+  reasoning model.
 - Model enum construction so supported model names and legacy aliases are valid
   string enum members.
 - Pydantic module configuration to accept SDK client types.

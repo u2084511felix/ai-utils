@@ -49,10 +49,10 @@ async def legacy_structured_output(prompt, schema, system_msg="default") -> str:
     """Returns a JSON string"""
 
     if (system_msg == "default"):
-        system_message = "Supply the function variables for the given function according to the instruction."
+        system_msg = "Supply the function variables for the given function according to the instruction."
 
     else:
-        system_message = system_msg
+        system_msg = system_msg
 
     LegacyStructuredOutput = FunctionCall()
     new_schema = json.loads(schema)
@@ -68,7 +68,7 @@ async def legacy_structured_output(prompt, schema, system_msg="default") -> str:
         }
     ]
 
-    client_reply = await LegacyStructuredOutput.function_call_legacy_structured_output(system_message, prompt)
+    client_reply = await LegacyStructuredOutput.function_call_legacy_structured_output(system_msg, prompt)
     if client_reply.error:
         raise ClientError from client_reply.error
     if client_reply.response is None:
@@ -484,14 +484,14 @@ async def GeneratePydanticModelStructuredOutput(prompt, schema_object_filepath, 
 
 async def responses_structured_output(
     model, 
-    system_message, 
+    system_msg, 
     prompt, 
     pydantic_model,
     client=make_async_openai_client()
 ):
     response = await client.responses.parse(
         model=model,
-        instructions=system_message,
+        instructions=system_msg,
         input=prompt,
         reasoning={
             "effort": "low"

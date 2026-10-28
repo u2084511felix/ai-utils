@@ -31,15 +31,19 @@ def test_usage_reasoning_boundary():
     assert result == expected
 
 
-@pytest.mark.parametrize("field", ["input_tokens", "output_tokens", "cached_input_tokens", "reasoning_tokens"])
+@pytest.mark.parametrize(
+    "field", [
+        "input_tokens", 
+        "output_tokens", 
+        "cached_input_tokens", 
+        "reasoning_tokens"
+    ])
 def test_negative_usage_rejected(field):
     """GIVEN a negative token count.
     WHEN the budget operation is called.
     THEN a negative token count is rejected."""
     with pytest.raises(ValidationError) as exc:
         TokenUsage(**{field: -1})
-    expected = ValidationError
-    assert exc.type == expected
 
 
 def test_reasoning_cannot_exceed_output():
@@ -48,8 +52,6 @@ def test_reasoning_cannot_exceed_output():
     THEN the excess reasoning count is rejected."""
     with pytest.raises(ValidationError, match="Reasoning tokens cannot exceed") as exc:
         TokenUsage(output_tokens=2, reasoning_tokens=3)
-    expected = ValidationError
-    assert exc.type == expected
 
 
 def test_negative_charge_rejected():
@@ -58,28 +60,25 @@ def test_negative_charge_rejected():
     THEN a negative charge is rejected."""
     with pytest.raises(ValidationError) as exc:
         CallCharge(model="gpt-4o", input_tokens=-1)
-    expected = ValidationError
-    assert exc.type == expected
 
 
 @pytest.mark.parametrize("limit", [None, 0, 10])
-def test_budget_retains_limit(limit):
-    """GIVEN a budget and specified token counts.
-    WHEN the budget operation is called.
-    THEN budget retains limit."""
-    instance = make_spend_budget(limit)
-    expected = limit
-    assert instance.limit_usd == expected
+class TestNewBudget:
 
+    def test_budget_retains_limit(self, limit):
+        """GIVEN a budget and specified token counts.
+        WHEN the budget operation is called.
+        THEN budget retains limit."""
+        instance = make_spend_budget(limit)
+        assert instance.limit_usd == limit
 
-@pytest.mark.parametrize("limit", [None, 0, 10])
-def test_budget_starts_without_charges(limit):
-    """GIVEN a budget and specified token counts.
-    WHEN the budget operation is called.
-    THEN budget starts without charges."""
-    instance = make_spend_budget(limit)
-    expected = 0
-    assert instance.spent_usd == expected
+    def test_budget_starts_without_charges(self, limit):
+        """GIVEN a budget and specified token counts.
+        WHEN the budget operation is called.
+        THEN budget starts without charges."""
+        instance = make_spend_budget(limit)
+        expected = 0
+        assert instance.spent_usd == expected
 
 
 def test_negative_limit_rejected():
@@ -88,8 +87,6 @@ def test_negative_limit_rejected():
     THEN the negative limit is rejected."""
     with pytest.raises(ValueError, match="cannot be negative") as exc:
         make_spend_budget(-0.01)
-    expected = ValueError
-    assert exc.type == expected
 
 
 @pytest.fixture
@@ -122,9 +119,9 @@ def test_unlimited_budget_returns_charge(used_budget):
     """GIVEN a budget and specified token counts.
     WHEN the budget operation is called.
     THEN unlimited budget returns charge."""
-    charge = used_budget.begin_call(model="test", input_tokens=100)
-    expected = 100
-    assert charge.input_tokens == expected
+    input_tokens = 100
+    charge = used_budget.begin_call(model="test", input_tokens=input_tokens)
+    assert charge.input_tokens == input_tokens
 
 
 def test_unlimited_budget_records_total(used_budget):
@@ -144,7 +141,12 @@ def reserved_budget(linear_cost, actual_input, output):
     return (charge, instance, usage)
 
 
-@pytest.mark.parametrize("actual_input,output,expected", [(2, 1, 4), (8, 3, 14), (0, 0, 0)])
+@pytest.mark.parametrize(
+    "actual_input,output,expected", [
+        (2, 1, 4), 
+        (8, 3, 14), 
+        (0, 0, 0)
+    ])
 def test_finish_replaces_estimate_with_actual_cost(reserved_budget, actual_input, output, expected):
     """GIVEN a budget and specified token counts.
     WHEN the budget operation is called.
@@ -188,6 +190,11 @@ def raced_budget(linear_cost):
     return (instance, sum(accepted))
 
 
+@pytest.fixture
+def raced_budget_instance(raced_budget):
+    return raced_budget[0]
+
+
 def test_concurrent_budget_limits_accepted_calls(raced_budget):
     """GIVEN a budget after concurrent reservation requests.
     WHEN the budget operation is called.
@@ -199,15 +206,14 @@ def test_concurrent_budget_limits_accepted_calls(raced_budget):
     assert accepted == expected
 
 
-def test_concurrent_budget_records_accepted_charges(raced_budget):
+def test_concurrent_budget_records_accepted_charges(raced_budget_instance):
     """GIVEN a budget after concurrent reservation requests.
     WHEN the budget operation is called.
     THEN concurrent budget records accepted charges."""
-    instance, accepted = raced_budget
     with pytest.raises(BudgetExceededError):
-        instance.begin_call(model="test", input_tokens=1)
+        raced_budget_instance.begin_call(model="test", input_tokens=1)
     expected = 19
-    assert instance.spent_usd == expected
+    assert raced_budget_instance.spent_usd == expected
 
 
 @pytest.fixture
@@ -225,6 +231,4 @@ def test_factory_wraps_initialization_errors(failed_budget):
     THEN the error retains its original cause."""
     with pytest.raises(InitializationError, match="bad setup") as exc:
         make_spend_budget(1)
-    result = isinstance(exc.value.__cause__, ValueError)
-    expected = True
-    assert result == expected
+    assert isinstance(exc.value.__cause__, ValueError)

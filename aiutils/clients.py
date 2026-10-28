@@ -107,9 +107,9 @@ def _get_usage(response: APIResponse | AsyncAPIResponse) -> TokenUsage:
     details = getattr(usage, "output_tokens_details" if is_responses else "completion_tokens_details", None)
     reasoning = getattr(details, "reasoning_tokens", 0) if details is not None else 0
     return TokenUsage(
-        input_tokens=int(usage.input_tokens if is_responses else usage.prompt_tokens),
-        output_tokens=int(usage.output_tokens if is_responses else usage.completion_tokens),
-        reasoning_tokens=int(reasoning or 0),
+        input_tokens=usage.input_tokens if is_responses else usage.prompt_tokens,
+        output_tokens=usage.output_tokens if is_responses else usage.completion_tokens,
+        reasoning_tokens=reasoning or 0,
     )
 
 

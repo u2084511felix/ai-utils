@@ -66,7 +66,8 @@ class Generate(GPTModule):
 
     async def generate(
         self, 
-        system_message: str, 
+        *,
+        system_msg: str, 
         prompt: str,
         model: str = TextModels.gpt_5_2, 
         temperature: float = 0, 
@@ -77,7 +78,7 @@ class Generate(GPTModule):
         Generate a text response from an LLM.
 
         Args:
-            system_message: The system message to set the context.
+            system_msg: The system message to set the context.
             prompt: The user prompt to generate a response for.
             model: The model to use for generation.
             temperature: The sampling temperature.
@@ -91,8 +92,8 @@ class Generate(GPTModule):
             ValueError: If any of the input arguments are invalid.
             ClientError: If the client returns an error.
         """
-        if not system_message:
-            raise ValueError("system_message cannot be empty")
+        if not system_msg:
+            raise ValueError("system_msg cannot be empty")
         if not prompt:
             raise ValueError("prompt cannot be empty")
         if temperature < 0:
@@ -103,7 +104,7 @@ class Generate(GPTModule):
         self.model = model
         self._set_reasoning_effort_and_temperature(reasoning_effort, temperature)
 
-        self.messages.append({"role": "system", "content": system_message})
+        self.messages.append({"role": "system", "content": system_msg})
         self.messages.append({"role": "user", "content": prompt})
 
         self.request_body = make_req_body(self)
@@ -119,6 +120,7 @@ class Generate(GPTModule):
 
     async def continued_response(
         self, 
+        *,
         assistant_response: str, 
         prompt: str
     ) -> ClientReply:
@@ -151,7 +153,8 @@ class Generate(GPTModule):
 
     async def structured_output(
         self, 
-        system_message: str, 
+        *,
+        system_msg: str, 
         prompt: str, 
         schema: dict | type[BaseModel] = {}, 
         input_type: str | InputType = InputType.JSON, 
@@ -165,7 +168,7 @@ class Generate(GPTModule):
         Generates structured output based on the provided system message, user prompt, and schema.
 
         Args:
-            system_message (str): The system message to set the context for the model.
+            system_msg (str): The system message to set the context for the model.
             prompt (str): The user prompt to generate a response for.
             schema (dict | type[BaseModel], optional): The schema to validate the structured output against. Defaults to {}.
             input_type (str | InputType, optional): The input type for the request body. Defaults to InputType.JSON.
@@ -179,13 +182,13 @@ class Generate(GPTModule):
             ClientReply: The JSON string, wrapped in a ClientReply object.
 
         Raises:
-            ValueError: If system_message or prompt is empty, or if the model or input type are invalid
+            ValueError: If system_msg or prompt is empty, or if the model or input type are invalid
             TypeError: If the schema type does not match the input type.
             ClientError: If the client encounters an error during the request.
             
         """
-        if not system_message:
-            raise ValueError("system_message cannot be empty")
+        if not system_msg:
+            raise ValueError("system_msg cannot be empty")
         if not prompt:
             raise ValueError("prompt cannot be empty")
 
@@ -198,7 +201,7 @@ class Generate(GPTModule):
         if assistant_response is not None:
             msg = {"role": "assistant", "content": assistant_response}
         else:
-            msg = {"role": "system", "content": system_message}
+            msg = {"role": "system", "content": system_msg}
 
         self.messages.append(msg)
         self.messages.append({"role": "user", "content": prompt})

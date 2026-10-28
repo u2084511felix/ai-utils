@@ -52,11 +52,11 @@ class FunctionCall(GPTModule):
 
     async def function_call_legacy_structured_output(
         self, 
-        system_message: str, 
+        system_msg: str, 
         prompt: str
     ) -> ClientReply:
         self.model = TextModels.previous
-        self.messages.append({"role": "system", "content": system_message})
+        self.messages.append({"role": "system", "content": system_msg})
         self.messages.append({"role": "user", "content": prompt})
         if self.model in REASONING_MODELS:
             self.reasoning_effort = "none"
