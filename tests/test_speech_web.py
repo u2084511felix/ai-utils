@@ -1,3 +1,4 @@
+from aiutils.budget import TokenUsage
 import io
 from types import SimpleNamespace
 from unittest.mock import Mock, call as mock_call
@@ -254,7 +255,7 @@ def web_search(client, monkeypatch):
     from unittest.mock import AsyncMock
     from aiutils.clients import ClientReply
 
-    monkeypatch.setattr(client, "async_responses_create", AsyncMock(return_value=ClientReply(content="search result")))
+    monkeypatch.setattr(client, "async_responses_create", AsyncMock(return_value=ClientReply(usage=TokenUsage(), content="search result")))
     return WebSearch(client=client)
 
 

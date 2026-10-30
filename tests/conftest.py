@@ -87,6 +87,7 @@ def response_factory(
 def mock_sync_client(response_factory):
     reply = response_factory()
     client = Mock(spec=OpenAI)
+    client.max_retries = 0
     client.chat = Mock()
     client.chat.completions = Mock()
     client.responses = Mock()
@@ -99,6 +100,7 @@ def mock_sync_client(response_factory):
 def mock_async_client(response_factory, default_embedding):
     reply = AsyncMock(return_value=response_factory())
     async_client = Mock(spec=AsyncOpenAI)
+    async_client.max_retries = 0
     async_client.chat = Mock()
     async_client.chat.completions = Mock()
     async_client.chat.completions.create = reply
@@ -107,7 +109,10 @@ def mock_async_client(response_factory, default_embedding):
     async_client.responses.create = reply
     async_client.embeddings = Mock()
     async_client.embeddings.create = AsyncMock(
-        return_value=SN(data=[SN(embedding=default_embedding)],)
+        return_value=SN(
+            data=[SN(embedding=default_embedding)], 
+            usage=SN(prompt_tokens=10, total_tokens=10)
+        )
     )
     return async_client
 

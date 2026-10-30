@@ -7,12 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class GPTModule(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
     request_body: dict[str, Any] | None = Field(default_factory=dict)
     model: str | None = None
     reasoning_effort: str | None = None
     messages: list = Field(default_factory=list)
     token_usage: int | None = None
     max_tokens: int | None = None
+    max_completion_tokens: int | None = None
     temperature: float | None = None
     frequency_penalty: float | None = None
     presence_penalty: float | None = None

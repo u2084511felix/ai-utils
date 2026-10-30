@@ -2,7 +2,9 @@
 from enum import StrEnum
 
 
-from pydantic import BaseModel, NonNegativeFloat, Field, PositiveFloat
+from pydantic import BaseModel, ConfigDict, NonNegativeFloat, Field, PositiveFloat
+
+from .control import check_finite_number, check_non_negative_int
 
 
 from .models import (
@@ -99,13 +101,14 @@ class Price(BaseModel):
         output: Price of completion tokens.
         discount: The discount factor applied to the total cost.
     """
+    model_config = ConfigDict(allow_inf_nan=False, frozen=True)
     input: NonNegativeFloat
     output: NonNegativeFloat
     name: str = Field(..., min_length=1)
     cached_input: NonNegativeFloat | None
     discount: PositiveFloat = 1
 
-    def convert(
+    def convert_currency(
         self, 
         *,
         currency: str, 
@@ -114,6 +117,7 @@ class Price(BaseModel):
         """Convert the price to the specified currency."""
         curr = Currency(currency)
         rate = fx_rates[curr]
+        check_finite_number(rate, "Exchange rate")
         if rate == 0:
             raise ZeroDivisionError(f"FX rate for {curr} cannot be zero.")
 
@@ -142,7 +146,10 @@ def get_price(model: str, prices: dict[str, Price] = PRICES) -> Price:
 
     Raises:
         NotImplementedError: The model has no listed price.
+        ValueError: The model name is blank or is not a string.
     """
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("model must be a nonempty string.")
     try:
         return prices[model.strip().lower()]
     except KeyError:
@@ -160,8 +167,8 @@ def calculate_token_cost(
 
     Args:
         model: Model name.
-        input_tokens: Prompt token count.
-        cached_input_tokens: The number of cached input tokens.
+        input_tokens: Total input count, including cached tokens.
+        cached_input_tokens: Cached tokens within the total input count.
         output_tokens: Completion token count.
         currency: The currency code for the cost calculation.
 
@@ -170,19 +177,28 @@ def calculate_token_cost(
 
     Raises:
         NotImplementedError: The model has no listed price.
+        ValueError: A count is invalid or cached usage has no listed rate.
     """
+    check_non_negative_int(input_tokens)
+    check_non_negative_int(output_tokens, "output_tokens")
+    check_non_negative_int(cached_input_tokens, "cached_input_tokens")
+    if cached_input_tokens > input_tokens:
+        raise ValueError("Cached input tokens cannot exceed input tokens.")
     curr = Currency(currency)
     price = get_price(model)
+    if cached_input_tokens and price.cached_input is None:
+        raise ValueError(f"No cached input price is listed for model '{model}'.")
     total = (
-        _calc_price(input_tokens, price.input) +
+        _calc_price(input_tokens - cached_input_tokens, price.input) +
         _calc_price(output_tokens, price.output) +
         _calc_price(cached_input_tokens, price.cached_input)
     )
     total /= price.discount
-    return convert(total, currency=curr)
+    check_finite_number(total, "Token cost")
+    return convert_currency(total, currency=curr)
 
 
-def convert(
+def convert_currency(
     amount_usd: float, 
     *,
     currency: str, 
@@ -194,7 +210,7 @@ def convert(
         amount_usd: Amount in US dollars.
         currency: Target currency code.
         rates: Exchange rates mapping currencies to their USD conversion rate.
-            Defaults to hard-coded FX rates (USD, GDP, EUR).
+            Defaults to fixed FX rates for USD, GBP, and EUR.
 
     Returns:
         The amount in the target currency.
@@ -203,10 +219,14 @@ def convert(
         KeyError: The currency is not in rates.
         ZeroDivisionError: The exchange rate for the currency is zero.
     """
+    check_finite_number(amount_usd, "amount_usd", minimum=-float("inf"))
     currency = Currency(currency)
     if currency not in rates:
         raise KeyError(f"Exchange rate for currency '{currency}' is not available.")
     rate = rates[currency]
+    check_finite_number(rate, "Exchange rate")
     if rate == 0:
         raise ZeroDivisionError(f"Exchange rate for currency '{currency}' is zero.")
-    return amount_usd / rate
+    converted = amount_usd / rate
+    check_finite_number(converted, "Converted amount", minimum=-float("inf"))
+    return converted

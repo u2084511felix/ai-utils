@@ -1,3 +1,4 @@
+from aiutils.budget import TokenUsage
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call as mock_call
 
@@ -542,7 +543,7 @@ async def test_provider_patch_passes_request(provider_patch):
 
 @pytest.fixture
 def empty_reply(client, monkeypatch):
-    monkeypatch.setattr(client, "async_responses_create", AsyncMock(return_value=ClientReply(response=SimpleNamespace(output=[]))))
+    monkeypatch.setattr(client, "async_responses_create", AsyncMock(return_value=ClientReply(usage=TokenUsage(), response=SimpleNamespace(output=[]))))
     module = diffs.Diffs(client=client)
     return module
 

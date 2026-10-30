@@ -9,6 +9,7 @@ from ..clients import make_async_openai_client, make_client
 from ..exceptions import ClientError
 from .function_call import FunctionCall
 from ..generate import make_generate
+from ..models import Vendor
 
 
 def run_script_action(action):
@@ -70,11 +71,11 @@ async def legacy_structured_output(prompt, schema, system_msg="default") -> str:
 
     client_reply = await LegacyStructuredOutput.function_call_legacy_structured_output(system_msg, prompt)
     if client_reply.error:
-        raise ClientError from client_reply.error
+        raise ClientError(e=client_reply.error) from client_reply.error
     if client_reply.response is None:
         raise ClientError("No response received from the client.")
 
-    client_reply = client_reply.response.output[0].function.arguments
+    client_reply = client_reply.content[0].function.arguments
     output_json = json.loads(client_reply)
     
     #save_json_file(output_json, "finaloutput.json")
@@ -147,7 +148,9 @@ async def generate_legacy_structured_output_schema(json_object, system_msg="defa
 
     client_reply = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
 
-    generated_schema = client_reply.response.output[0].function.arguments
+    if client_reply.error:
+        raise ClientError(e=client_reply.error) from client_reply.error
+    generated_schema = client_reply.content[0].function.arguments
     output_json = json.loads(generated_schema)
 
     # if debug:
@@ -260,7 +263,9 @@ async def generate_structured_output_schema(json_object, system_msg="default") -
 
     client_reply = await SchemaGenerator.function_call_legacy_structured_output(sys_msg, transform_prompt)
 
-    generated_schema = client_reply.response.output[0].function.arguments
+    if client_reply.error:
+        raise ClientError(e=client_reply.error) from client_reply.error
+    generated_schema = client_reply.content[0].function.arguments
 
     output_json = json.loads(generated_schema)
     #save_json_file(output_json, "schema_output.json")
@@ -277,9 +282,22 @@ async def structured_outputs_generator(
     params=None,
     model='', 
     vendor='openai',
-    client=make_client()
+    client=None,
+    *,
+    input_tokens=None,
+    cancel=None,
 ):
-    client.set_vendor(vendor)
+    vendor = Vendor(vendor.lower())
+    if params is not None and not isinstance(params, dict):
+        raise TypeError("params must be a dictionary or None.")
+    options = dict(params) if params is not None else {}
+    configured = options.pop("client", None)
+    if client is not None and configured is not None and client is not configured:
+        raise ValueError("Supply one client through client or params, not conflicting clients.")
+    if client is None:
+        client = configured if configured is not None else make_client(vendor)
+    if client.vendor != vendor:
+        raise ValueError("The injected client vendor does not match vendor.")
 
     if vendor == 'google':
         max_tokens = 65536
@@ -295,21 +313,23 @@ async def structured_outputs_generator(
         sys_msg = system_msg
 
     if not params:
-        generate = make_generate(max_tokens=max_tokens, client=client)
+        token_field = "max_completion_tokens" if vendor == "openai" else "max_tokens"
+        options[token_field] = max_tokens
+    generate = make_generate(**options, client=client)
+
+    call_options = {}
+    if input_tokens is not None:
+        call_options["input_tokens"] = input_tokens
+    if cancel is not None:
+        call_options["cancel"] = cancel
+
+    if model != '':
+        client_reply = await generate.structured_output(system_msg=sys_msg, prompt=transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model, **call_options)
     else:
-        generate = make_generate(**params)
-
-    try:
-        if model != '':
-            client_reply = await generate.structured_output(sys_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name, model=model)
-        else:
-            client_reply = await generate.structured_output(sys_msg, transform_prompt, schema=schema, input_type=input_type, module_name=module_name)
-
-    except Exception as e:
-        return e
+        client_reply = await generate.structured_output(system_msg=sys_msg, prompt=transform_prompt, schema=schema, input_type=input_type, module_name=module_name, **call_options)
 
     if client_reply.error:
-        raise ClientError from client_reply.error
+        raise ClientError(e=client_reply.error) from client_reply.error
 
     output_json = json.loads(client_reply.content)
     #save_json_file(output_json, "latest_structured_outout.json")
@@ -487,8 +507,9 @@ async def responses_structured_output(
     system_msg, 
     prompt, 
     pydantic_model,
-    client=make_async_openai_client()
+    client=None
 ):
+    client = client if client is not None else make_async_openai_client()
     response = await client.responses.parse(
         model=model,
         instructions=system_msg,

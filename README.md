@@ -1,62 +1,121 @@
 # ai-utils
 
-Utilities for AI clients, generation, embeddings, spend budgets, and file patches.
+Utilities for AI clients, generation, embeddings, shared budgets, and file patches.
+Use Python 3.13 or newer.
 
-## Tests
-
-Use Python 3.13 or newer and install the development dependencies with Poetry:
+## Install and test
 
 ```sh
 poetry install --with dev
 poetry run pytest
 ```
 
-To include a coverage report:
+The normal suite runs without API credentials or network access. It uses fake
+clients and mock HTTP transports. Tokenizer tests use local token data. File
+operations use temporary directories. No paid checks run in this suite.
+
+To measure statements and branches in `aiutils`:
 
 ```sh
 poetry run pytest --cov=aiutils --cov-report=term-missing
 ```
 
-Coverage configuration measures statements and branches in `aiutils`, excluding
-test code. The run refreshes `.coverage`; inspect the saved results with
-`poetry run coverage report -m`.
+## Generation with a shared budget
 
-The suite runs offline without API credentials. Fixtures provide placeholder
-environment variables for import-time SDK initialization, inject mocked clients,
-and reject socket connections. Tokenizer tests use a local fake so they do not
-download vocabulary files. File operations run in pytest temporary directories;
-shell commands and code generation are mocked.
+Set `OPENAI_API_KEY` before you create an OpenAI client. Imports do not create
+clients or require API keys. Use this example inside an async function:
 
-Tests cover model lookup, pricing and conversion, budget validation and concurrent
-reservations, client dispatch and error handling, generation and structured
-requests, embeddings, patch application and undo, prompt rendering, schema helpers,
-and audio requests.
+```python
+from aiutils import make_retry_policy, make_budget, make_client
+from aiutils.generate import make_generate
 
-Regression tests expose known defects as ordinary test failures. These cases
-include token-cost arithmetic,
-price conversion, empty provider choices, Responses API parsing, stale reasoning
-settings, token counting, the default prompt template path, speech presets,
-WebSearch construction and request handling, dropped Responses API tools,
-structured-output defaults, patch client responses, and failed patch history.
+budget = make_budget(
+    2.0,
+    token_limits={"gpt-5.2": 60_000},
+    window_seconds=60,
+)
+client = make_client(budget=budget, retry_policy=make_retry_policy(retries=2))
+generate = make_generate(client=client, max_completion_tokens=512)
+reply = await generate.generate(
+    system_msg="Give a short answer.",
+    prompt="What is a token?",
+    input_tokens=128,
+)
+print(reply.content)
+print(budget.confirmed_usd, budget.unresolved_usd)
+```
 
-## Pre-commit hooks
+Supply an `input_tokens` estimate when a client has a budget. Include the full
+request context in that estimate. All calls that use the same budget share its
+capacity and spend limit. A separate client can use the same budget. A classifier
+can use the public reservation operations directly.
 
-After installing the development dependencies, enable the hooks in your checkout:
+An input estimate does not guarantee a strict final spend cap. A call can use
+more tokens than its estimate. See [the migration contract](MIGRATION.md) for
+capacity windows, reservations, failure billing, and cancellation.
+
+## Structured output
+
+Use a named JSON Schema wrapper as a dictionary or JSON string:
+
+```python
+schema = {
+    "name": "Answer",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+        "additionalProperties": False,
+    },
+}
+reply = await generate.structured_output(
+    system_msg="Give a short answer.",
+    prompt="What is a token?",
+    schema=schema,
+    input_tokens=128,
+)
+```
+
+Validation uses JSON Schema Draft 2020-12 by default. An explicit Draft 7
+`$schema` is also supported. A valid generic schema can still violate a provider
+restriction. Generic validation does not establish provider acceptance.
+
+For Pydantic output, supply a model class and `input_type="pydantic"`. This path
+uses the SDK parsing API. The reply retains text, reported usage, the provider
+response, and the parsed model in `reply.parsed`.
+
+## Paid OpenAI checks
+
+These checks are separate from the normal suite and pre-commit. They make paid
+requests. They were created for separate manual use.
+
+Set real credentials and select a priced model that supports Chat Completions,
+Responses, structured output, and function tools:
+
+```sh
+export OPENAI_API_KEY='your-key'
+export OPENAI_LIVE_MODEL='gpt-5.2'
+poetry run pytest live_tests --openai-live
+```
+
+The suite disables retries and sets an input spend limit of USD 1 per test.
+The limit applies to input reservations. It does not guarantee a strict final
+charge limit. The suite checks sync chat, async chat, Responses, Pydantic output,
+and tool-call usage. No live call runs without the explicit flag.
+
+## Pre-commit
 
 ```sh
 poetry run pre-commit install
-```
-
-Each commit checks staged TOML and YAML files for valid syntax, checks staged
-files for merge conflict markers, and runs the full pytest suite. The test hook
-uses the Poetry environment and runs once per commit, without passing staged
-filenames to pytest. Any test failure blocks the commit.
-
-To run the hooks manually across all tracked files:
-
-```sh
 poetry run pre-commit run --all-files
 ```
 
-The first run downloads the pinned validation hooks and creates their environment.
-The pytest suite itself runs offline.
+Each commit checks TOML and YAML syntax, checks merge conflict markers, and runs
+the normal pytest suite. A failure blocks the commit. The first hook run downloads
+the pinned validation hooks. The pytest suite itself runs offline.
+
+The [OpenAI Python SDK reference](https://developers.openai.com/api/reference/python)
+describes SDK retry controls. The
+[structured-output guide](https://developers.openai.com/api/docs/guides/structured-outputs)
+describes the parsing API and provider schema restrictions.

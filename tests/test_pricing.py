@@ -2,7 +2,7 @@ from pydantic import ValidationError
 import pytest
 
 from aiutils import pricing
-from aiutils.pricing import Currency, Price, calculate_token_cost, convert, get_price
+from aiutils.pricing import Currency, Price, calculate_token_cost, convert_currency, get_price
 
 
 @pytest.mark.parametrize("model", ["gpt-4o", " GPT-4O ", "GpT-4o"])
@@ -75,7 +75,7 @@ def test_convert_uses_supplied_exchange_rate(currency, rate):
     """GIVEN specified prices and currency values.
     WHEN the price operation is called.
     THEN the amount uses the supplied exchange rate."""
-    result = convert(100, currency=currency, rates={currency: rate})
+    result = convert_currency(100, currency=currency, rates={currency: rate})
     expected = 100 / rate
     assert result == expected
 
@@ -85,7 +85,7 @@ def test_usd_conversion_is_identity(amount):
     """GIVEN specified prices and currency values.
     WHEN the price operation is called.
     THEN the amount does not change."""
-    result = convert(amount, currency="USD")
+    result = convert_currency(amount, currency="USD")
     expected = amount
     assert result == expected
 
@@ -95,7 +95,7 @@ def test_conversion_rejects_invalid_currency():
     WHEN the price operation is called.
     THEN the currency is rejected."""
     with pytest.raises(ValueError) as exc:
-        convert(1, currency="XYZ")
+        convert_currency(1, currency="XYZ")
     expected = ValueError
     assert exc.type == expected
 
@@ -106,7 +106,7 @@ def test_invalid_exchange_rates(rates, error, message):
     WHEN the price operation is called.
     THEN the missing or zero rate is rejected."""
     with pytest.raises(error, match=message) as exc:
-        convert(1, currency="EUR", rates=rates)
+        convert_currency(1, currency="EUR", rates=rates)
     expected = error
     assert exc.type == expected
 
@@ -120,7 +120,7 @@ def test_zero_tokens_cost_nothing():
     assert result == expected
 
 
-@pytest.mark.parametrize("inputs,outputs,cached,expected", [(1000000, 0, 0, 2.5), (0, 1000000, 0, 10), (0, 0, 1000000, 1.25), (1000000, 1000000, 1000000, 13.75)])
+@pytest.mark.parametrize("inputs,outputs,cached,expected", [(1000000, 0, 0, 2.5), (0, 1000000, 0, 10), (1000000, 0, 1000000, 1.25), (1000000, 1000000, 1000000, 11.25)])
 def test_cost_matches_listed_rates(inputs, outputs, cached, expected):
     """GIVEN specified prices and currency values.
     WHEN the price operation is called.
@@ -141,7 +141,7 @@ def test_price_conversion_converts_input(discounted_price):
     WHEN the price operation is called.
     THEN price conversion converts input."""
     price = discounted_price
-    converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
+    converted = price.convert_currency(currency="GBP", fx_rates={"GBP": 2})
     expected = 5
     assert converted.input == expected
 
@@ -151,7 +151,7 @@ def test_price_conversion_converts_output(discounted_price):
     WHEN the price operation is called.
     THEN price conversion converts output."""
     price = discounted_price
-    converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
+    converted = price.convert_currency(currency="GBP", fx_rates={"GBP": 2})
     expected = 10
     assert converted.output == expected
 
@@ -161,7 +161,7 @@ def test_price_conversion_retains_absent_cache(discounted_price):
     WHEN the price operation is called.
     THEN price conversion retains absent cache."""
     price = discounted_price
-    converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
+    converted = price.convert_currency(currency="GBP", fx_rates={"GBP": 2})
     expected = None
     assert converted.cached_input is expected
 
@@ -171,7 +171,7 @@ def test_price_conversion_retains_discount(discounted_price):
     WHEN the price operation is called.
     THEN price conversion retains discount."""
     price = discounted_price
-    converted = price.convert(currency="GBP", fx_rates={"GBP": 2})
+    converted = price.convert_currency(currency="GBP", fx_rates={"GBP": 2})
     expected = 2
     assert converted.discount == expected
 
@@ -203,6 +203,6 @@ def test_price_conversion_rejects_zero_exchange_rate(currency_price):
     THEN the zero rate is rejected."""
     price = currency_price
     with pytest.raises(ZeroDivisionError, match="cannot be zero") as exc:
-        price.convert(currency="EUR", fx_rates={"EUR": 0})
+        price.convert_currency(currency="EUR", fx_rates={"EUR": 0})
     expected = ZeroDivisionError
     assert exc.type == expected

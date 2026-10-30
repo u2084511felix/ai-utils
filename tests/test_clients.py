@@ -1,3 +1,5 @@
+from aiutils.budget import TokenUsage
+from pydantic import BaseModel
 from types import SimpleNamespace
 from unittest.mock import Mock, call as mock_call
 
@@ -44,7 +46,7 @@ class TestVendorFactory:
         THEN vendor factory passes configuration."""
         constructor = vendor_sdk
         factory()
-        expected = [mock_call(api_key="fake-key", base_url=url)]
+        expected = [mock_call(api_key="fake-key", base_url=url, max_retries=0)]
         assert constructor.call_args_list == expected
 
 
@@ -81,6 +83,8 @@ def test_unsupported_vendor(client):
     THEN ValueError is raised."""
     with pytest.raises(ValueError) as exc:
         clients.make_client("unknown", client=client.client, async_client=client.async_client)
+    expected = ValueError
+    assert exc.type is expected
 
 
 
@@ -142,8 +146,7 @@ def test_sdk_factory_passes_key(sdk_factory, factory, sdk_name):
 
 @pytest.fixture
 def changed_reply():
-    first = ClientReply()
-    first.usage.input_tokens = 7
+    first = ClientReply(usage=TokenUsage(input_tokens=7))
     return first
 
 
@@ -151,7 +154,7 @@ def test_reply_defaults_are_independent(changed_reply):
     """GIVEN a reply with changed token usage.
     WHEN another reply is created.
     THEN the new reply has no token charges."""
-    reply = ClientReply()
+    reply = ClientReply(usage=TokenUsage())
     expected = 0
     assert reply.usage.input_tokens == expected
 
@@ -271,6 +274,8 @@ def test_usage_requires_provider_counts(missing_usage_client):
     THEN the absent token counts are reported."""
     with pytest.raises(RuntimeError, match="did not report token usage") as exc:
         missing_usage_client.chat_completions({})
+    expected = RuntimeError
+    assert exc.type is expected
 
 
 @pytest.fixture
@@ -347,9 +352,17 @@ class TestSyncChat:
 def model():
     return "gpt-4o"
 
+class ParsedResult(BaseModel):
+    value: str
+
+
 @pytest.fixture
-def body_params(model):
-    return {"model": model}
+def body_params(model, request):
+    params = {"model": model}
+    case = getattr(request.node, "callspec", None)
+    if case is not None and case.params.get("input_type") == "pydantic":
+        params["response_format"] = ParsedResult
+    return params
 
 @pytest.mark.parametrize(
     "input_type,op", [
@@ -370,7 +383,7 @@ class TestSyncBody:
         WHEN the client operation is called.
         THEN sync body selects endpoint."""
         client.chat_completions_body(body_params, input_type=input_type)
-        expected_call_args = [mock_call(model=model)]
+        expected_call_args = [mock_call(**body_params)]
         call_args_list = getattr(client.client.chat.completions, op).call_args_list
         assert call_args_list == expected_call_args
 
@@ -388,7 +401,7 @@ class TestAsyncBody:
         THEN async body selects endpoint."""
         await client.async_chat_completions_body(body_params, input_type=input_type)
         result = getattr(client.async_client.chat.completions, op)
-        expected = [mock_call(model=model)]
+        expected = [mock_call(**body_params)]
         assert result.await_args_list == expected
 
     async def test_async_body_returns_text(self, client, body_params, input_type, op):
@@ -464,15 +477,18 @@ def test_invalid_sync_body_returns_error(client, bad_input):
     """GIVEN an invalid input type.
     WHEN the client operation is called.
     THEN invalid sync body returns error."""
-    reply = client.chat_completions_body({}, input_type=bad_input)
-    assert isinstance(reply.error, ValueError)
+    with pytest.raises(ValueError) as error:
+        client.chat_completions_body({}, input_type=bad_input)
+    expected = ValueError
+    assert error.type is expected
 
 
 def test_invalid_sync_body_avoids_provider(client, bad_input):
     """GIVEN an invalid input type.
     WHEN the client operation is called.
     THEN invalid sync body avoids provider."""
-    _ = client.chat_completions_body({}, input_type=bad_input)
+    with pytest.raises(ValueError):
+        client.chat_completions_body({}, input_type=bad_input)
     call_args_list = client.client.chat.completions.create.call_args_list
     expected = []
     assert call_args_list == expected
@@ -483,8 +499,10 @@ async def test_invalid_async_body_returns_error(client, bad_input):
     """GIVEN an invalid input type.
     WHEN the client operation is called.
     THEN invalid async body returns ValueError."""
-    reply = await client.async_chat_completions_body({}, input_type=bad_input)
-    assert isinstance(reply.error, ValueError)
+    with pytest.raises(ValueError) as error:
+        await client.async_chat_completions_body({}, input_type=bad_input)
+    expected = ValueError
+    assert error.type is expected
 
 
 @pytest.mark.asyncio
@@ -492,7 +510,8 @@ async def test_invalid_async_body_avoids_provider(client, bad_input):
     """GIVEN an invalid input type.
     WHEN the client operation is called.
     THEN invalid async body avoids provider."""
-    _ = await client.async_chat_completions_body({}, input_type=bad_input)
+    with pytest.raises(ValueError):
+        await client.async_chat_completions_body({}, input_type=bad_input)
     await_args_list = client.async_client.chat.completions.create.await_args_list
     expected = []
     assert await_args_list == expected
@@ -609,9 +628,9 @@ def vendor_client(vendor_clients):
 
 @pytest.mark.parametrize(
     "vendor,factory", [
-        ("openai", "make_openai_client"), 
-        ("google", "make_google_client"), 
-        ("brave", "make_brave_client")
+        ("openai", "make_openai_client"),
+        ("google", "make_google_client"),
+        ("brave", "make_brave_client"),
     ])
 class TestVendorChange:
     def test_vendor_change_sets_vendor(self, vendor_client, vendor, factory):
@@ -903,6 +922,8 @@ def test_set_vendor_rejects_unavailable_sync_clients(missing_sync_client):
     THEN the unavailable client is reported."""
     with pytest.raises(RuntimeError, match="Sync client") as exc:
         missing_sync_client.set_vendor("openai")
+    expected = RuntimeError
+    assert exc.type is expected
 
 def test_set_vendor_rejects_unavailable_async_client(missing_async_client):
     """GIVEN an asynchronous client and a provider response.
@@ -910,6 +931,8 @@ def test_set_vendor_rejects_unavailable_async_client(missing_async_client):
     THEN the unavailable client is reported."""
     with pytest.raises(RuntimeError, match="Async client") as exc:
         missing_async_client.set_vendor("openai")
+    expected = RuntimeError
+    assert exc.type is expected
 
 
 def test_invalid_vendor_retains_sync_client(client):
@@ -945,10 +968,7 @@ def test_make_client_wraps_constructor_error(client_failure):
     THEN the error retains the original client error."""
     error, client = client_failure
     with pytest.raises(InitializationError, match="setup failed") as exc:
-        clients.make_client(
-            client=client.client, 
-            async_client=client.async_client
-        )
+        clients.make_client(client=client.client, async_client=client.async_client)
     assert exc.value.__cause__ is error
 
 

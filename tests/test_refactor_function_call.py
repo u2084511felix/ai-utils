@@ -1,3 +1,4 @@
+from aiutils.budget import TokenUsage
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call as mock_call
 
@@ -15,7 +16,7 @@ from aiutils.modules.prompt_engine import Refactor
 def legacy_request(client, monkeypatch, reasoning):
     if reasoning:
         monkeypatch.setattr(function_call, "REASONING_MODELS", [TextModels.previous])
-    send = AsyncMock(return_value=ClientReply(content="answer"))
+    send = AsyncMock(return_value=ClientReply(usage=TokenUsage(), content="answer"))
     monkeypatch.setattr(client, "async_chat_completions", send)
     module = FunctionCall(client=client)
     module.tools = [{"type": "function", "function": {"name": "test"}}]

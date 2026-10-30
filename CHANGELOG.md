@@ -4,7 +4,7 @@ All notable changes to `ai-utils` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.0]
 
 ### Added
 
@@ -62,3 +62,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WebSearch construction, tool overrides, and deprecated Pydantic serialization.
 - Structured-output defaults for token limits, client selection, and system
   instructions.
+
+## [Unreleased]
+
+### Changed
+
+- Replace the budget API with a public protocol and one factory. Add shared
+  token capacity, cancellation, and read-only spend values.
+- Track confirmed cost and unresolved estimates separately. Reject foreign
+  reservations and repeated settlement.
+- Add one library retry policy for synchronous and asynchronous client calls.
+  Disable SDK retries and reject injected clients that permit nested retries.
+- Validate named JSON Schema wrappers and Pydantic models before history changes.
+  Support JSON Schema Draft 2020-12 and Draft 7.
+- Correct cached-input pricing and preserve cached usage during reconciliation.
+- Require explicit usage on successful replies. Retain parsed Pydantic output.
+- Repair schema-generation response handling and structured-output keyword calls.
+- Remove import-time client creation.
+
+### Added
+
+- Add migration contract notes and offline checks for budget windows, retry
+  ownership, cancellation, schema validation, and reported usage.
+- Add a separate paid OpenAI suite. Require the explicit `--openai-live` flag.
+  Keep these checks outside normal tests and pre-commit.
+
+### Fixed
+
+- Restore OpenAI, Google, and Brave selection in `set_vendor`. Remove the
+  OpenAI-only restriction from the client factory.
+- Update budget and retry fixtures to replace the pure wait functions and clock.
+  Remove calls to the deleted waiter and clock constructor arguments.
+- Reject boolean token counts before integer matching. Permit zero-second waits
+  and check cancellation without a sleep.
+- Update wait function notes and remove deleted waiter arguments from docstrings.
+- Fix test discovery after the retry policy became a protocol. Keep Pydantic
+  from applying a runtime instance check to the client policy field.
+- Use the public retry policy factory in tests and examples. Reject boolean
+  retry counts and non-finite wait limits in the Pydantic policy model.

@@ -10,7 +10,7 @@ ENCODING_NAME = 'cl100k_base'
 
 
 def truncate_to_token_limit(
-    text: str, 
+    text: str,
     model: str,
     max_tokens: int = 8191
 ):
@@ -33,9 +33,9 @@ def get_token_count(text):
 
 async def get_embedding(
     text,
-    client=make_client(Vendor.OPENAI), 
-    model=EmbeddingModels.LARGE, 
-    dimensions=3072, 
+    client=make_client(Vendor.OPENAI),
+    model=EmbeddingModels.LARGE,
+    dimensions=3072,
     encoding_format="float"
 ) -> list[float]:
     """
@@ -78,5 +78,5 @@ async def get_embedding(
         dimensions=dimensions
     )
     if isinstance(response, Exception):
-        raise ClientError from response
+        raise ClientError(e=response) from response
     return response

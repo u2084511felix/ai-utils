@@ -1,3 +1,4 @@
+from aiutils.budget import TokenUsage
 import json
 from unittest.mock import AsyncMock, Mock, call as mock_call
 
@@ -14,8 +15,8 @@ from aiutils.modules.gpt_module import GPTModule, make_req_body
 
 @pytest.fixture
 def gen(client, monkeypatch) -> Generate:
-    monkeypatch.setattr(client, "async_chat_completions", AsyncMock(return_value=ClientReply(content="answer")))
-    monkeypatch.setattr(client, "async_chat_completions_body", AsyncMock(return_value=ClientReply(content='{"ok": true}')))
+    monkeypatch.setattr(client, "async_chat_completions", AsyncMock(return_value=ClientReply(usage=TokenUsage(), content="answer")))
+    monkeypatch.setattr(client, "async_chat_completions_body", AsyncMock(return_value=ClientReply(usage=TokenUsage(), content='{"ok": true}')))
     return make_generate(client=client)
 
 @pytest.fixture
@@ -86,7 +87,7 @@ def vendor_generator(gen, vendor):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "model,vendor", [
-        ("gpt-4o", Vendor.OPENAI), 
+        ("gpt-4o", Vendor.OPENAI),
         ("gemini-2.5-pro", Vendor.GOOGLE)
     ])
 async def test_model_vendor_match(vendor_generator, model, vendor):
@@ -101,8 +102,8 @@ async def test_model_vendor_match(vendor_generator, model, vendor):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "model,vendor", [
-        ("missing", Vendor.OPENAI), 
-        ("gpt-4o", Vendor.GOOGLE), 
+        ("missing", Vendor.OPENAI),
+        ("gpt-4o", Vendor.GOOGLE),
         ("gemini-2.5-pro", Vendor.OPENAI)
     ])
 async def test_wrong_model_or_vendor_rejected(vendor_generator, model, vendor):
@@ -142,12 +143,7 @@ def expected_request_body(gen_kwargs):
 @pytest.mark.asyncio
 class TestGenerationAsync:
 
-    async def test_generation_passes_request_chat(
-        self, 
-        gen,
-        gen_kwargs,
-        expected_request_body,
-    ):
+    async def test_generation_passes_request_chat(self, gen, gen_kwargs, expected_request_body):
         """GIVEN a gen and specified request options.
         WHEN a response is requested using chat.
         THEN generation passes request."""
@@ -156,12 +152,7 @@ class TestGenerationAsync:
         await_args_list = gen.client.async_chat_completions.await_args_list
         assert await_args_list == expected
 
-    async def test_generation_passes_request_body(
-        self, 
-        gen,
-        gen_kwargs,
-        expected_request_body,
-    ):
+    async def test_generation_passes_request_body(self, gen, gen_kwargs, expected_request_body):
         """GIVEN a gen and specified request options.
         WHEN a response is requested using body.
         THEN generation passes request."""
@@ -190,44 +181,26 @@ class TestGenerationAsync:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "system_msg,prompt,temp,error", [
-        ("", "q", 0, "system_msg"), 
-        ("s", "", 0, "prompt"), 
+        ("", "q", 0, "system_msg"),
+        ("s", "", 0, "prompt"),
         ("s", "q", -1, "temperature")
     ])
 class TestInvalidGeneration:
-    async def test_invalid_generation_avoids_provider(
-        self,
-        gen,
-        system_msg,
-        prompt,
-        temp,
-        error
-    ):
+    async def test_invalid_generation_avoids_provider(self, gen, system_msg, prompt, temp, error):
         """GIVEN an empty message or a negative temperature.
         WHEN a response is requested.
         THEN invalid generation avoids provider."""
         with pytest.raises(ValueError, match=error):
-            await gen.generate(
-                system_msg=system_msg, prompt=prompt, temperature=temp
-            )
+            await gen.generate(system_msg=system_msg, prompt=prompt, temperature=temp)
         expected = []
         assert gen.client.async_chat_completions.await_args_list == expected
 
-    async def test_invalid_generation_preserves_messages(
-        self,
-        gen,
-        system_msg,
-        prompt,
-        temp,
-        error
-    ):
+    async def test_invalid_generation_preserves_messages(self, gen, system_msg, prompt, temp, error):
         """GIVEN an empty message or a negative temperature.
         WHEN a response is requested.
         THEN invalid generation preserves messages."""
         with pytest.raises(ValueError, match=error):
-            await gen.generate(
-                system_msg=system_msg, prompt=prompt, temperature=temp
-            )
+            await gen.generate(system_msg=system_msg, prompt=prompt, temperature=temp)
         expected = []
         assert gen.messages == expected
 
@@ -241,10 +214,10 @@ def base_kwargs():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "model,effort,expected,temp", [
-        (TextModels.gpt_5_2, "default", "none", 1), 
-        (TextModels.gpt_5, "default", "minimal", 1), 
-        (TextModels.gpt_5_2, "high", "high", 1), 
-        (TextModels.gpt_5, "low", "low", 1), 
+        (TextModels.gpt_5_2, "default", "none", 1),
+        (TextModels.gpt_5, "default", "minimal", 1),
+        (TextModels.gpt_5_2, "high", "high", 1),
+        (TextModels.gpt_5, "low", "low", 1),
         (TextModels.gpt_4o, "default", None, 0.3)
     ])
 class TestGenerationSetsRequestOptions:
@@ -272,15 +245,15 @@ async def gen_with_conversation(gen):
 @pytest.fixture
 def expected_messages():
     return [
-        {"role": "system", "content": "s"}, 
-        {"role": "user", "content": "first"}, 
-        {"role": "assistant", "content": "answer"}, 
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "answer"},
         {"role": "user", "content": "second"}
     ]
 
 @pytest.mark.asyncio
 async def test_continuation_retains_messages(
-    gen_with_conversation, 
+    gen_with_conversation,
     expected_messages
 ):
     """GIVEN an existing conversation and a new exchange.
@@ -305,7 +278,7 @@ async def test_continuation_sends_once(gen_with_conversation):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "answer,prompt", [
-        ("", "p"), 
+        ("", "p"),
         ("a", "")
     ])
 async def test_continuation_validates_input(gen, answer, prompt):
@@ -326,9 +299,9 @@ def json_schema():
 @pytest.fixture
 def structured_output_kwargs(json_schema):
     return {
-        "system_msg": "s", 
-        "prompt": "p", 
-        "schema": json.dumps(json_schema), 
+        "system_msg": "s",
+        "prompt": "p",
+        "schema": json.dumps(json_schema),
         "model": "gpt-4o"
     }
 
@@ -350,7 +323,7 @@ async def test_json_generation_passes_schema(gen, structured_output_kwargs):
     THEN json generation passes schema."""
     await gen.structured_output(**structured_output_kwargs)
     expected = {
-        "type": "json_schema", 
+        "type": "json_schema",
         "json_schema": json.loads(structured_output_kwargs["schema"])
     }
     assert gen.request_body["response_format"] == expected
@@ -376,9 +349,9 @@ def pydantic_schema():
 @pytest.fixture
 def structured_output_kwargs_pydantic(pydantic_schema):
     return {
-        "system_msg": "s", 
-        "prompt": "p", 
-        "schema": pydantic_schema, 
+        "system_msg": "s",
+        "prompt": "p",
+        "schema": pydantic_schema,
         "input_type": "pydantic",
         "model": "gpt-4o",
         "assistant_response": "previous"
@@ -419,7 +392,7 @@ async def test_pydantic_generation_selects_endpoint(gen, structured_output_kwarg
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "schema,error", [
-        ({}, TypeError), 
+        ({}, ValueError),
         ("not json", json.JSONDecodeError)
     ])
 async def test_invalid_json_schema(gen, schema, error):
@@ -437,8 +410,8 @@ async def test_invalid_json_schema(gen, schema, error):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "system,prompt,input_type", [
-        ("", "p", "json"), 
-        ("s", "", "json"), 
+        ("", "p", "json"),
+        ("s", "", "json"),
         ("s", "p", "invalid")
     ])
 async def test_structured_output_invalid_arguments(gen, system, prompt, input_type):
@@ -447,7 +420,7 @@ async def test_structured_output_invalid_arguments(gen, system, prompt, input_ty
     THEN the input is rejected before a provider request."""
     with pytest.raises(ValueError):
         await gen.structured_output(
-            system_msg=system, prompt=prompt, schema="{}", input_type=input_type
+            system_msg=system, prompt=prompt, schema='{"name":"result","schema":{"type":"object"}}', input_type=input_type
         )
     expected = []
     assert gen.client.async_chat_completions_body.await_args_list == expected
@@ -489,7 +462,7 @@ async def test_structured_output_error_preserves_cause(failed_generator):
     THEN the error retains the provider error as its cause."""
     error, gen = failed_generator
     with pytest.raises(ClientError) as exc:
-        await gen.structured_output(system_msg="s", prompt="p", schema="{}")
+        await gen.structured_output(system_msg="s", prompt="p", schema='{"name":"result","schema":{"type":"object"}}')
     assert exc.value.__cause__ is error
 
 
@@ -533,10 +506,7 @@ def nonreasoning_kwargs(reasoning_generate_kwargs):
 
 
 @pytest.mark.asyncio
-async def test_switching_models_clears_reasoning_settings(
-    reasoning_generator,
-    nonreasoning_kwargs
-):
+async def test_switching_models_clears_reasoning_settings(reasoning_generator, nonreasoning_kwargs):
     """GIVEN a gen that used a reasoning model.
     WHEN a response is requested.
     THEN the new request has no reasoning setting."""
@@ -556,7 +526,7 @@ def log_gen_kwargs():
     return {
         "system_msg": "s",
         "prompt": "p",
-        "schema": "{}",
+        "schema": '{"name":"result","schema":{"type":"object"}}',
         "debug": True
     }
 
@@ -581,10 +551,7 @@ async def test_debug_generation_logs_context(logged_generator, assistant, log_ge
     WHEN a response is requested.
     THEN debug generation logs context."""
     gen = logged_generator
-    reply = await gen.structured_output(
-        **log_gen_kwargs, assistant_response=assistant
-    )
-    mock_call(reply)
+    await gen.structured_output(**log_gen_kwargs, assistant_response=assistant)
     expected = 1 if assistant is None else 2
     assert gen.logger.debug.call_count == expected
 
@@ -646,7 +613,7 @@ async def test_missing_schema_module_does_not_call_provider(gen, imported_schema
     THEN the missing module is reported before a provider request."""
     kwargs = imported_schema_kwargs.copy()
     kwargs["module_name"] = "nonexistent_aiutils_schema_module"
-    with pytest.raises(ModuleNotFoundError):
+    with pytest.raises(ValueError):
         await gen.structured_output(**kwargs)
     expected = []
     assert gen.client.async_chat_completions_body.await_args_list == expected

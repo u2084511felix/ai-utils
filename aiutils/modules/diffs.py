@@ -1,3 +1,4 @@
+from pydantic import Field
 
 import json
 import os
@@ -309,13 +310,13 @@ def apply_diff(item, filepaths, last_diffs):
 
 
 class Diffs(GPTModule):
-    client: Client = make_client()
+    client: Client = Field(default_factory=make_client)
     _tools: dict[str, list] = {"apply_patch": [{"type": "apply_patch"}]}
 
     def _response_output_items(self, response):
         if isinstance(response, ClientReply):
             if response.error:
-                raise ClientError from response.error
+                raise ClientError(e=response.error) from response.error
             response = response.response
             if response is None:
                 raise ClientError("No response received from the model.")

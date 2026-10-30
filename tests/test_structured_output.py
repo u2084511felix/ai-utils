@@ -1,3 +1,4 @@
+from aiutils.budget import TokenUsage
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call as mock_call
@@ -12,15 +13,16 @@ from aiutils.modules.function_call import FunctionCall
 
 @pytest.fixture
 def output_client():
-    return Mock()
+    return Mock(vendor="openai")
 
 
 @pytest.fixture
 def function_module(client, monkeypatch):
     module = FunctionCall(client=client)
     arguments = '{"value": "answer"}'
-    response = SimpleNamespace(output=[SimpleNamespace(function=SimpleNamespace(arguments=arguments))])
-    method = AsyncMock(return_value=ClientReply(response=response))
+    tools = [SimpleNamespace(function=SimpleNamespace(arguments=arguments))]
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=tools))])
+    method = AsyncMock(return_value=ClientReply(usage=TokenUsage(), content=tools, response=response))
     monkeypatch.setattr(FunctionCall, "function_call_legacy_structured_output", method)
     monkeypatch.setattr(structured, "FunctionCall", lambda: module)
     return (module, method, arguments)
@@ -117,7 +119,7 @@ async def test_legacy_output_chains_provider_error(failed_output):
 @pytest.fixture
 def missing_output(function_module):
     _, method, _ = function_module
-    method.return_value = ClientReply()
+    method.return_value = ClientReply(usage=TokenUsage())
 
 
 @pytest.mark.asyncio
@@ -146,7 +148,7 @@ async def test_legacy_output_rejects_invalid_schema_before_provider_call(functio
 @pytest.fixture
 def invalid_output(function_module):
     _, method, _ = function_module
-    method.return_value.response.output[0].function.arguments = "invalid"
+    method.return_value.content[0].function.arguments = "invalid"
 
 
 @pytest.mark.asyncio
@@ -285,16 +287,16 @@ async def test_schema_generation_passes_prompt(function_module, function, field,
 
 @pytest.fixture
 def output_generator(monkeypatch):
-    generate = SimpleNamespace(structured_output=AsyncMock(return_value=ClientReply(content='{"value":42}')))
+    generate = SimpleNamespace(structured_output=AsyncMock(return_value=ClientReply(usage=TokenUsage(), content='{"value":42}')))
     factory = Mock(return_value=generate)
     monkeypatch.setattr(structured, "make_generate", factory)
     return (generate, factory)
 
 
 @pytest.fixture
-def explicit_options(output_generator, model):
+def explicit_options(output_generator, model, vendor):
     generate, factory = output_generator
-    client = Mock()
+    client = Mock(vendor=vendor)
     params = {"max_tokens": 100, "client": client}
     expected_call = dict(schema="Result", input_type="pydantic", module_name="models")
     if model:
@@ -322,8 +324,7 @@ async def test_output_generation_selects_vendor(explicit_options, vendor, model)
     THEN output generation selects vendor."""
     client, factory, generate, params, expected_call = explicit_options
     await structured.structured_outputs_generator("prompt", "Result", system_msg="custom", input_type="pydantic", module_name="models", params=params, model=model, vendor=vendor, client=client)
-    expected = [mock_call(vendor)]
-    assert client.set_vendor.call_args_list == expected
+    assert client.vendor == vendor
 
 
 @pytest.mark.asyncio
@@ -346,7 +347,7 @@ async def test_output_generation_passes_schema(explicit_options, vendor, model):
     THEN output generation passes schema."""
     client, factory, generate, params, expected_call = explicit_options
     await structured.structured_outputs_generator("prompt", "Result", system_msg="custom", input_type="pydantic", module_name="models", params=params, model=model, vendor=vendor, client=client)
-    expected = [mock_call("custom", "prompt", **expected_call)]
+    expected = [mock_call(system_msg="custom", prompt="prompt", **expected_call)]
     assert generate.structured_output.await_args_list == expected
 
 
@@ -373,7 +374,7 @@ async def test_output_generator_chains_reply_error(reply_error, output_client):
 @pytest.fixture
 def invalid_json(output_generator):
     generate, _ = output_generator
-    generate.structured_output.return_value = ClientReply(content="invalid")
+    generate.structured_output.return_value = ClientReply(usage=TokenUsage(), content="invalid")
 
 
 @pytest.mark.asyncio
@@ -396,20 +397,20 @@ def request_error(output_generator):
 
 
 @pytest.mark.asyncio
-async def test_output_generator_returns_raised_exception(request_error, output_client):
+async def test_output_generator_raises_provider_exception(request_error, output_client):
     """GIVEN an operation that reports an error.
     WHEN the schema operation is called.
-    THEN the result retains the request error."""
+    THEN the request error is raised."""
     error = request_error
-    result = await structured.structured_outputs_generator("p", "{}", client=output_client) is error
-    expected = True
-    assert result == expected
+    with pytest.raises(RuntimeError) as raised:
+        await structured.structured_outputs_generator("p", "{}", client=output_client)
+    assert raised.value is error
 
 
 @pytest.fixture
-def default_options(output_generator):
+def default_options(output_generator, vendor):
     _, factory = output_generator
-    client = Mock()
+    client = Mock(vendor=vendor)
     return (client, factory)
 
 
@@ -421,7 +422,7 @@ async def test_output_generation_sets_token_limit(default_options, vendor, model
     THEN output generation sets token limit."""
     client, factory = default_options
     await structured.structured_outputs_generator("p", "{}", model=model, vendor=vendor, client=client)
-    result = factory.call_args.kwargs.get("max_tokens")
+    result = factory.call_args.kwargs.get("max_completion_tokens" if vendor == "openai" else "max_tokens")
     expected = limit
     assert result == expected
 

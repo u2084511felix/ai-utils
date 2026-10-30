@@ -67,6 +67,6 @@ class WebSearch(GPTModule):
 
         response = await self.client.async_responses_create(**clean_model)
         if response.error:
-            raise ClientError from response.error
+            raise ClientError(e=response.error) from response.error
         return response.content
 
